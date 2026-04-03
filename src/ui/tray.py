@@ -203,20 +203,24 @@ class ProviderCard(QFrame):
 class UsagePopup(QWidget):
     """Popup window that appears when clicking the tray icon.
 
-    Uses Qt.Tool instead of Qt.Popup for better Windows compatibility.
+    Uses Qt.Window + stays-on-top for a persistent, draggable panel.
+    Child widgets forward mouse drag events to this top-level window.
     """
 
     closed = Signal()
 
     def __init__(self, parent=None):
-        super().__init__(parent, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
+        super().__init__(
+            parent,
+            Qt.WindowType.Window
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint,
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedWidth(380)
         self.setStyleSheet("background: transparent;")
-        self._auto_close_timer = QTimer(self)
-        self._auto_close_timer.setSingleShot(True)
-        self._auto_close_timer.setInterval(100)
-        self._auto_close_timer.timeout.connect(self._check_focus)
+        self._drag_pos = None
+        self._dragging = False
 
         self._container = QFrame(self)
         self._container.setStyleSheet(
@@ -232,10 +236,12 @@ class UsagePopup(QWidget):
         self._layout.setContentsMargins(16, 12, 16, 12)
         self._layout.setSpacing(8)
 
-        # Title
-        title = QLabel("GlmBar - 编程套餐用量")
-        title.setStyleSheet("color: #e0e0e0; font-size: 16px; font-weight: bold;")
-        self._layout.addWidget(title)
+        # Title bar area — visual only, dragging handled via event filter
+        self._title_label = QLabel("GlmBar - 编程套餐用量")
+        self._title_label.setStyleSheet(
+            "color: #e0e0e0; font-size: 16px; font-weight: bold; padding: 4px 0;"
+        )
+        self._layout.addWidget(self._title_label)
 
         # Cards container inside a scroll area
         self._scroll = QScrollArea()
@@ -254,9 +260,39 @@ class UsagePopup(QWidget):
         self._layout.addWidget(self._scroll)
 
         # Footer
-        self._footer = QLabel("左键点击：刷新 | 右键点击：设置")
+        self._footer = QLabel("左键点击托盘：刷新 | 右键点击托盘：设置 | Esc：关闭面板")
         self._footer.setStyleSheet("color: #555; font-size: 10px;")
         self._layout.addWidget(self._footer)
+
+        # Install event filter on all children so we can intercept drag
+        self._install_drag_filter(self)
+
+    def _install_drag_filter(self, widget: QWidget) -> None:
+        """Recursively install drag event filter on all child widgets."""
+        for child in widget.findChildren(QWidget):
+            child.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:
+        """Forward left-button drag from any child to this window."""
+        from PySide6.QtCore import QEvent
+
+        if event.type() in (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseMove,
+            QEvent.Type.MouseButtonRelease,
+        ):
+            if event.button() == Qt.MouseButton.LeftButton or (
+                hasattr(event, "buttons") and event.buttons() & Qt.MouseButton.LeftButton
+            ):
+                # Deliver to self's handlers
+                if event.type() == QEvent.Type.MouseButtonPress:
+                    self.mousePressEvent(event)
+                elif event.type() == QEvent.Type.MouseMove:
+                    self.mouseMoveEvent(event)
+                elif event.type() == QEvent.Type.MouseButtonRelease:
+                    self.mouseReleaseEvent(event)
+                return False  # let the child also process it (e.g. scroll)
+        return super().eventFilter(obj, event)
 
     def update_usage(self, usages: list[UsageData]) -> None:
         """Update the display with new usage data."""
@@ -283,28 +319,36 @@ class UsagePopup(QWidget):
     def show_at_tray(self) -> None:
         """Show the popup positioned near the system tray."""
         screen = QApplication.primaryScreen().geometry()
-        # Position at bottom-right of screen (where tray usually is)
         w = self.sizeHint().width()
         h = self.sizeHint().height()
         x = screen.right() - w - 16
-        y = screen.bottom() - h - 60  # above taskbar
+        y = screen.bottom() - h - 60
 
         self.move(x, y)
         self.show()
         self.raise_()
-        self.activateWindow()
-        self._auto_close_timer.start()
 
-    def _check_focus(self) -> None:
-        """Check if focus moved away from popup, close if so."""
-        if not self.isActiveWindow():
-            self.hide()
-            self.closed.emit()
-            return
-        self._auto_close_timer.start()
+    def mousePressEvent(self, event) -> None:
+        """Start dragging."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.pos()
+            self._dragging = False
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        """Move the popup while dragging."""
+        if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self._dragging = True
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        """Stop dragging."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = None
+        super().mouseReleaseEvent(event)
 
     def hide(self) -> None:
-        self._auto_close_timer.stop()
         super().hide()
 
     def keyPressEvent(self, event) -> None:
