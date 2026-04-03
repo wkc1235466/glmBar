@@ -264,10 +264,12 @@ class UsagePopup(QWidget):
         self.setFixedWidth(380)
         self.setStyleSheet("background: transparent;")
         self._drag_pos = None
+        self._drag_start = None
         self._dragging = False
         self._compact = False
         self._usages: list[UsageData] = []
         self._compact_label: QLabel | None = None
+        self._dblclick_from_button = False
 
         self._container = QFrame(self)
         self._container.setStyleSheet(
@@ -321,14 +323,6 @@ class UsagePopup(QWidget):
         )
         refresh_btn.clicked.connect(self._on_refresh)
 
-        self._compact_btn = QPushButton("迷你")
-        self._compact_btn.setStyleSheet(
-            "QPushButton { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
-            "border-radius: 6px; padding: 6px 16px; font-size: 12px; }"
-            "QPushButton:hover { background: #3a3a4a; }"
-        )
-        self._compact_btn.clicked.connect(self._toggle_compact)
-
         settings_btn = QPushButton("设置")
         settings_btn.setStyleSheet(
             "QPushButton { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
@@ -338,7 +332,6 @@ class UsagePopup(QWidget):
         settings_btn.clicked.connect(self.settings_requested.emit)
 
         footer_layout.addWidget(refresh_btn)
-        footer_layout.addWidget(self._compact_btn)
         footer_layout.addStretch()
         footer_layout.addWidget(settings_btn)
         self._layout.addWidget(self._footer)
@@ -352,11 +345,12 @@ class UsagePopup(QWidget):
             child.installEventFilter(self)
 
     def eventFilter(self, obj, event) -> bool:
-        """Forward drag and double-click events from children to this window."""
+        """Forward drag and double-click from children to this window."""
         from PySide6.QtCore import QEvent
 
         if event.type() == QEvent.Type.MouseButtonDblClick:
             if event.button() == Qt.MouseButton.LeftButton:
+                self._dblclick_from_button = isinstance(obj, QPushButton)
                 self.mouseDoubleClickEvent(event)
                 return True
 
@@ -520,15 +514,20 @@ class UsagePopup(QWidget):
         self.raise_()
 
     def mousePressEvent(self, event) -> None:
-        """Start dragging."""
+        """Start potential drag."""
         if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start = event.globalPosition().toPoint()
             self._drag_pos = event.globalPosition().toPoint() - self.pos()
             self._dragging = False
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
-        """Move the popup while dragging."""
+        """Move the popup while dragging (only after 4px threshold)."""
         if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            if not self._dragging and self._drag_start is not None:
+                delta = event.globalPosition().toPoint() - self._drag_start
+                if delta.manhattanLength() < 4:
+                    return
             self._dragging = True
             self.move(event.globalPosition().toPoint() - self._drag_pos)
         super().mouseMoveEvent(event)
@@ -537,11 +536,12 @@ class UsagePopup(QWidget):
         """Stop dragging."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = None
+            self._drag_start = None
         super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event) -> None:
-        """Double-click to switch back to expanded mode."""
-        if self._compact:
+        """Double-click toggles between compact and expanded mode."""
+        if not self._dblclick_from_button:
             self._toggle_compact()
         super().mouseDoubleClickEvent(event)
 
