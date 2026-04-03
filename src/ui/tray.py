@@ -104,78 +104,53 @@ class ProviderCard(QFrame):
 
     def __init__(self, usage: UsageData, compact: bool = False, parent=None):
         super().__init__(parent)
-        self.setFrameShape(QFrame.Shape.StyledPanel)
         if compact:
-            self.setStyleSheet(
-                "ProviderCard { background: #1e1e2e; border: 1px solid #333; "
-                "border-radius: 6px; padding: 4px 8px; }"
-            )
+            self.setFrameShape(QFrame.Shape.NoFrame)
+            self.setStyleSheet("background: transparent; border: none; padding: 0; margin: 0;")
+            self._build_compact(usage)
         else:
+            self.setFrameShape(QFrame.Shape.StyledPanel)
             self.setStyleSheet(
                 "ProviderCard { background: #1e1e2e; border: 1px solid #333; "
                 "border-radius: 8px; padding: 8px; }"
             )
-        if compact:
-            self._build_compact(usage)
-        else:
             self._build(usage)
 
+    @staticmethod
+    def _pct_color(pct: float) -> str:
+        if pct < 50:
+            return "#4CAF50"
+        elif pct < 80:
+            return "#FFC107"
+        return "#F44336"
+
     def _build_compact(self, usage: UsageData) -> None:
-        """Build a single-line compact layout showing all windows."""
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 6, 10, 6)
-        layout.setSpacing(4)
-
-        # Provider/plan name
-        name_text = usage.plan_name if usage.plan_name else usage.provider_name
-        name = QLabel(name_text)
-        name.setStyleSheet("color: #e0e0e0; font-size: 12px; font-weight: bold;")
-        layout.addWidget(name)
-
-        # All windows in one line
+        """Single QLabel with rich text — height is exactly the font height."""
+        parts = [f'<span style="color:#e0e0e0; font-weight:bold;">智谱：</span>']
         for i, w in enumerate(usage.windows):
-            sep = QLabel("|")
-            sep.setStyleSheet("color: #444; font-size: 11px;")
-            layout.addWidget(sep)
-
-            short = w.label.replace("Token 配额", "Tokens").replace("MCP/时间配额", "MCP")
-            pct_color = (
-                "#4CAF50" if w.used_percent < 50
-                else "#FFC107" if w.used_percent < 80
-                else "#F44336"
-            )
-            info = QLabel(f"{short}: {w.used_percent:.0f}%")
-            info.setStyleSheet(f"color: {pct_color}; font-size: 11px; font-weight: bold;")
-            layout.addWidget(info)
-
-            # Reset time on first window only
-            if i == 0 and w.resets_at:
-                delta = w.resets_at - datetime.now(timezone.utc)
-                if delta.total_seconds() > 0:
-                    hours = int(delta.total_seconds() // 3600)
-                    mins = int((delta.total_seconds() % 3600) // 60)
-                    reset_text = f"({hours}时{mins}分)" if hours > 0 else f"({mins}分)"
-                    reset = QLabel(reset_text)
-                    reset.setStyleSheet("color: #555; font-size: 10px;")
-                    layout.addWidget(reset)
+            if i > 0:
+                parts.append('<span style="color:#555;"> | </span>')
+            short = w.label.replace("Token 配额", "Token").replace("MCP/时间配额", "MCP")
+            c = self._pct_color(w.used_percent)
+            parts.append(f'<span style="color:{c}; font-weight:bold;">{short}：{w.used_percent:.0f}%</span>')
 
         if not usage.windows:
             if usage.status == ProviderStatus.ERROR:
-                err = QLabel("错误")
-                err.setStyleSheet("color: #F44336; font-size: 12px;")
-                layout.addWidget(err)
+                parts.append('<span style="color:#F44336;">错误</span>')
             elif usage.status == ProviderStatus.UNAUTHORIZED:
-                err = QLabel("未授权")
-                err.setStyleSheet("color: #FF9800; font-size: 12px;")
-                layout.addWidget(err)
+                parts.append('<span style="color:#FF9800;">未授权</span>')
 
-        layout.addStretch()
-
-        # Balance
         if usage.balance is not None:
-            bal = QLabel(f"${usage.balance:.2f}")
-            bal.setStyleSheet("color: #4CAF50; font-size: 11px;")
-            layout.addWidget(bal)
+            parts.append(f'<span style="color:#4CAF50;"> ${usage.balance:.2f}</span>')
+
+        label = QLabel("".join(parts))
+        label.setStyleSheet("background: transparent; padding: 0; margin: 0; font-size: 12px;")
+        label.setContentsMargins(0, 0, 0, 0)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(label)
 
     def _build(self, usage: UsageData) -> None:
         layout = QVBoxLayout(self)
@@ -292,6 +267,7 @@ class UsagePopup(QWidget):
         self._dragging = False
         self._compact = False
         self._usages: list[UsageData] = []
+        self._compact_label: QLabel | None = None
 
         self._container = QFrame(self)
         self._container.setStyleSheet(
@@ -331,7 +307,10 @@ class UsagePopup(QWidget):
         self._layout.addWidget(self._scroll)
 
         # Footer button bar
-        footer_layout = QHBoxLayout()
+        self._footer = QWidget()
+        self._footer.setStyleSheet("background: transparent;")
+        footer_layout = QHBoxLayout(self._footer)
+        footer_layout.setContentsMargins(0, 0, 0, 0)
         footer_layout.setSpacing(8)
 
         refresh_btn = QPushButton("刷新")
@@ -362,7 +341,7 @@ class UsagePopup(QWidget):
         footer_layout.addWidget(self._compact_btn)
         footer_layout.addStretch()
         footer_layout.addWidget(settings_btn)
-        self._layout.addLayout(footer_layout)
+        self._layout.addWidget(self._footer)
 
         # Install event filter on all children so we can intercept drag
         self._install_drag_filter(self)
@@ -373,8 +352,13 @@ class UsagePopup(QWidget):
             child.installEventFilter(self)
 
     def eventFilter(self, obj, event) -> bool:
-        """Forward left-button drag from any child to this window."""
+        """Forward drag and double-click events from children to this window."""
         from PySide6.QtCore import QEvent
+
+        if event.type() == QEvent.Type.MouseButtonDblClick:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.mouseDoubleClickEvent(event)
+                return True
 
         if event.type() in (
             QEvent.Type.MouseButtonPress,
@@ -384,14 +368,13 @@ class UsagePopup(QWidget):
             if event.button() == Qt.MouseButton.LeftButton or (
                 hasattr(event, "buttons") and event.buttons() & Qt.MouseButton.LeftButton
             ):
-                # Deliver to self's handlers
                 if event.type() == QEvent.Type.MouseButtonPress:
                     self.mousePressEvent(event)
                 elif event.type() == QEvent.Type.MouseMove:
                     self.mouseMoveEvent(event)
                 elif event.type() == QEvent.Type.MouseButtonRelease:
                     self.mouseReleaseEvent(event)
-                return False  # let the child also process it (e.g. scroll)
+                return False
         return super().eventFilter(obj, event)
 
     def update_usage(self, usages: list[UsageData]) -> None:
@@ -401,58 +384,124 @@ class UsagePopup(QWidget):
         When no keys are configured, displays a setup guide card.
         """
         self._usages = usages
-
-        # Filter out providers without API keys
         active_usages = [u for u in usages if u.status != ProviderStatus.NO_API_KEY]
 
-        # Clear existing cards
+        # Remove old compact label if any
+        if self._compact_label is not None:
+            self._layout.removeWidget(self._compact_label)
+            self._compact_label.deleteLater()
+            self._compact_label = None
+
+        # Clear scroll-area cards
         while self._cards_layout.count():
             item = self._cards_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        if not active_usages:
-            # Show setup guide card
-            guide = QFrame()
-            guide.setStyleSheet(
-                "QFrame { background: #1e1e2e; border: 1px solid #333; "
-                "border-radius: 8px; padding: 16px; }"
-            )
-            guide_layout = QVBoxLayout(guide)
-            guide_layout.setContentsMargins(16, 16, 16, 16)
-            guide_layout.setSpacing(12)
-
-            hint = QLabel("请先在设置中配置您的 API 密钥")
-            hint.setStyleSheet("color: #888; font-size: 13px;")
-            hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            hint.setWordWrap(True)
-            guide_layout.addWidget(hint)
-
-            open_btn = QPushButton("打开设置")
-            open_btn.setStyleSheet(
-                "QPushButton { background: #4CAF50; color: white; border: none; "
-                "border-radius: 6px; padding: 8px 24px; font-size: 13px; font-weight: bold; }"
-                "QPushButton:hover { background: #45a049; }"
-            )
-            open_btn.clicked.connect(self.settings_requested.emit)
-            guide_layout.addWidget(open_btn, alignment=Qt.AlignmentFlag.AlignCenter)
-
-            self._cards_layout.addWidget(guide)
-        else:
+        if self._compact and active_usages:
+            # Compact: bypass scroll area, single rich-text label
+            self._scroll.hide()
+            lines = []
             for usage in active_usages:
-                card = ProviderCard(usage, compact=self._compact)
-                self._cards_layout.addWidget(card)
+                parts = [f'<span style="color:#e0e0e0; font-weight:bold;">智谱：</span>']
+                for i, w in enumerate(usage.windows):
+                    if i > 0:
+                        parts.append('<span style="color:#555;"> | </span>')
+                    short = w.label.replace("Token 配额", "Token").replace("MCP/时间配额", "MCP")
+                    c = ProviderCard._pct_color(w.used_percent)
+                    parts.append(
+                        f'<span style="color:{c}; font-weight:bold;">'
+                        f'{short}：{w.used_percent:.0f}%</span>'
+                    )
+                if not usage.windows:
+                    if usage.status == ProviderStatus.ERROR:
+                        parts.append('<span style="color:#F44336;">错误</span>')
+                    elif usage.status == ProviderStatus.UNAUTHORIZED:
+                        parts.append('<span style="color:#FF9800;">未授权</span>')
+                if usage.balance is not None:
+                    parts.append(f'<span style="color:#4CAF50;"> ${usage.balance:.2f}</span>')
+                lines.append("".join(parts))
 
-        self._cards_layout.addStretch()
-        self._cards_widget.adjustSize()
+            self._compact_label = QLabel("<br>".join(lines))
+            self._compact_label.setStyleSheet(
+                "background: transparent; padding: 0; margin: 0; font-size: 12px;"
+            )
+            self._compact_label.setContentsMargins(0, 0, 0, 0)
+            self._layout.insertWidget(1, self._compact_label)
+        else:
+            self._scroll.show()
+            if not active_usages:
+                guide = QFrame()
+                guide.setStyleSheet(
+                    "QFrame { background: #1e1e2e; border: 1px solid #333; "
+                    "border-radius: 8px; padding: 16px; }"
+                )
+                guide_layout = QVBoxLayout(guide)
+                guide_layout.setContentsMargins(16, 16, 16, 16)
+                guide_layout.setSpacing(12)
+
+                hint = QLabel("请先在设置中配置您的 API 密钥")
+                hint.setStyleSheet("color: #888; font-size: 13px;")
+                hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                hint.setWordWrap(True)
+                guide_layout.addWidget(hint)
+
+                open_btn = QPushButton("打开设置")
+                open_btn.setStyleSheet(
+                    "QPushButton { background: #4CAF50; color: white; border: none; "
+                    "border-radius: 6px; padding: 8px 24px; font-size: 13px; font-weight: bold; }"
+                    "QPushButton:hover { background: #45a049; }"
+                )
+                open_btn.clicked.connect(self.settings_requested.emit)
+                guide_layout.addWidget(open_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+                self._cards_layout.addWidget(guide)
+            else:
+                for usage in active_usages:
+                    card = ProviderCard(usage, compact=False)
+                    self._cards_layout.addWidget(card)
+
+            self._cards_layout.addStretch()
+            self._cards_widget.adjustSize()
+
         self.adjustSize()
+        if self._compact and self._compact_label is not None:
+            # Explicitly set size: container padding + label size
+            hint = self._compact_label.sizeHint()
+            self.setFixedSize(hint.width() + 16, hint.height() + 8)
+        self._install_drag_filter(self)
 
     def _toggle_compact(self) -> None:
         """Toggle between compact and expanded mode."""
         self._compact = not self._compact
-        self._compact_btn.setText("展开" if self._compact else "迷你")
-        self.setFixedWidth(420 if self._compact else 380)
+        if self._compact:
+            self._title_label.hide()
+            self._footer.hide()
+            self._container.setStyleSheet(
+                "QFrame { background: #12121e; border: 1px solid #333; "
+                "border-radius: 6px; }"
+            )
+            self._layout.setContentsMargins(8, 4, 8, 4)
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(600)
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)
+        else:
+            self._title_label.show()
+            self._footer.show()
+            self._container.setStyleSheet(
+                "QFrame { background: #12121e; border: 1px solid #333; "
+                "border-radius: 12px; }"
+            )
+            self._layout.setContentsMargins(16, 12, 16, 12)
+            self.setFixedWidth(380)
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(600)
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)
         self.update_usage(self._usages)
+        self.show()
+        self.raise_()
 
     def _on_refresh(self) -> None:
         """Emit refresh signal (TrayIcon connects to this)."""
@@ -489,6 +538,12 @@ class UsagePopup(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = None
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        """Double-click to switch back to expanded mode."""
+        if self._compact:
+            self._toggle_compact()
+        super().mouseDoubleClickEvent(event)
 
     def hide(self) -> None:
         super().hide()
