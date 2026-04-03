@@ -134,6 +134,8 @@ class ZaiProvider(BaseProvider):
             elif limit_type == "TOKENS_LIMIT":
                 label = "Token 配额"
 
+            unit = "次" if limit_type == "TIME_LIMIT" else "tokens"
+
             windows.append(
                 UsageWindow(
                     label=label,
@@ -142,9 +144,12 @@ class ZaiProvider(BaseProvider):
                     total=float(window_size),
                     remaining=float(remaining),
                     resets_at=resets_at,
-                    unit="tokens",
+                    unit=unit,
                 )
             )
+
+        # Token 配额排在前面，MCP/时间配额排在后面
+        windows.sort(key=lambda w: 0 if "Token" in w.label else 1)
 
         return UsageData(
             provider_id=self.provider_id,

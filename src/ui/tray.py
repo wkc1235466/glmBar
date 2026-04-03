@@ -102,14 +102,80 @@ class UsageBar(QProgressBar):
 class ProviderCard(QFrame):
     """A card widget showing one provider's usage info."""
 
-    def __init__(self, usage: UsageData, parent=None):
+    def __init__(self, usage: UsageData, compact: bool = False, parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setStyleSheet(
-            "ProviderCard { background: #1e1e2e; border: 1px solid #333; "
-            "border-radius: 8px; padding: 8px; }"
-        )
-        self._build(usage)
+        if compact:
+            self.setStyleSheet(
+                "ProviderCard { background: #1e1e2e; border: 1px solid #333; "
+                "border-radius: 6px; padding: 4px 8px; }"
+            )
+        else:
+            self.setStyleSheet(
+                "ProviderCard { background: #1e1e2e; border: 1px solid #333; "
+                "border-radius: 8px; padding: 8px; }"
+            )
+        if compact:
+            self._build_compact(usage)
+        else:
+            self._build(usage)
+
+    def _build_compact(self, usage: UsageData) -> None:
+        """Build a single-line compact layout showing all windows."""
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(4)
+
+        # Provider/plan name
+        name_text = usage.plan_name if usage.plan_name else usage.provider_name
+        name = QLabel(name_text)
+        name.setStyleSheet("color: #e0e0e0; font-size: 12px; font-weight: bold;")
+        layout.addWidget(name)
+
+        # All windows in one line
+        for i, w in enumerate(usage.windows):
+            sep = QLabel("|")
+            sep.setStyleSheet("color: #444; font-size: 11px;")
+            layout.addWidget(sep)
+
+            short = w.label.replace("Token 配额", "Tokens").replace("MCP/时间配额", "MCP")
+            pct_color = (
+                "#4CAF50" if w.used_percent < 50
+                else "#FFC107" if w.used_percent < 80
+                else "#F44336"
+            )
+            info = QLabel(f"{short}: {w.used_percent:.0f}%")
+            info.setStyleSheet(f"color: {pct_color}; font-size: 11px; font-weight: bold;")
+            layout.addWidget(info)
+
+            # Reset time on first window only
+            if i == 0 and w.resets_at:
+                delta = w.resets_at - datetime.now(timezone.utc)
+                if delta.total_seconds() > 0:
+                    hours = int(delta.total_seconds() // 3600)
+                    mins = int((delta.total_seconds() % 3600) // 60)
+                    reset_text = f"({hours}时{mins}分)" if hours > 0 else f"({mins}分)"
+                    reset = QLabel(reset_text)
+                    reset.setStyleSheet("color: #555; font-size: 10px;")
+                    layout.addWidget(reset)
+
+        if not usage.windows:
+            if usage.status == ProviderStatus.ERROR:
+                err = QLabel("错误")
+                err.setStyleSheet("color: #F44336; font-size: 12px;")
+                layout.addWidget(err)
+            elif usage.status == ProviderStatus.UNAUTHORIZED:
+                err = QLabel("未授权")
+                err.setStyleSheet("color: #FF9800; font-size: 12px;")
+                layout.addWidget(err)
+
+        layout.addStretch()
+
+        # Balance
+        if usage.balance is not None:
+            bal = QLabel(f"${usage.balance:.2f}")
+            bal.setStyleSheet("color: #4CAF50; font-size: 11px;")
+            layout.addWidget(bal)
 
     def _build(self, usage: UsageData) -> None:
         layout = QVBoxLayout(self)
@@ -125,18 +191,14 @@ class ProviderCard(QFrame):
 
         header.addStretch()
 
-        status_text = usage.summary_text
-        status_color = "#4CAF50"
-        if usage.status == ProviderStatus.ERROR:
-            status_color = "#F44336"
-        elif usage.status == ProviderStatus.NO_API_KEY:
-            status_color = "#888"
-        elif usage.status == ProviderStatus.UNAUTHORIZED:
-            status_color = "#FF9800"
-
-        status_label = QLabel(status_text)
-        status_label.setStyleSheet(f"color: {status_color}; font-size: 12px;")
-        header.addWidget(status_label)
+        if usage.status != ProviderStatus.OK:
+            status_text = usage.summary_text
+            status_color = "#F44336" if usage.status == ProviderStatus.ERROR else (
+                "#888" if usage.status == ProviderStatus.NO_API_KEY else "#FF9800"
+            )
+            status_label = QLabel(status_text)
+            status_label.setStyleSheet(f"color: {status_color}; font-size: 12px;")
+            header.addWidget(status_label)
 
         layout.addLayout(header)
 
@@ -165,9 +227,7 @@ class ProviderCard(QFrame):
 
             info.addStretch()
 
-            detail_parts = [f"{w.used:.0f}/{w.total:.0f}"]
-            if w.unit:
-                detail_parts.append(w.unit)
+            detail_parts = [f"{w.used_percent:.0f}%"]
             if w.resets_at:
                 from datetime import timezone
                 delta = w.resets_at - datetime.now(timezone.utc)
@@ -176,8 +236,13 @@ class ProviderCard(QFrame):
                     mins = int((delta.total_seconds() % 3600) // 60)
                     detail_parts.append(f"{hours}时{mins}分后重置")
 
-            detail = QLabel(" ".join(detail_parts))
-            detail.setStyleSheet("color: #888; font-size: 10px;")
+            pct_color = (
+                "#4CAF50" if w.used_percent < 50
+                else "#FFC107" if w.used_percent < 80
+                else "#F44336"
+            )
+            detail = QLabel("  ".join(detail_parts))
+            detail.setStyleSheet(f"color: {pct_color}; font-size: 11px; font-weight: bold;")
             info.addWidget(detail)
 
             win_layout.addLayout(info)
@@ -210,6 +275,7 @@ class UsagePopup(QWidget):
 
     closed = Signal()
     settings_requested = Signal()
+    refresh_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(
@@ -223,6 +289,8 @@ class UsagePopup(QWidget):
         self.setStyleSheet("background: transparent;")
         self._drag_pos = None
         self._dragging = False
+        self._compact = False
+        self._usages: list[UsageData] = []
 
         self._container = QFrame(self)
         self._container.setStyleSheet(
@@ -271,6 +339,15 @@ class UsagePopup(QWidget):
             "border-radius: 6px; padding: 6px 16px; font-size: 12px; }"
             "QPushButton:hover { background: #3a3a4a; }"
         )
+        refresh_btn.clicked.connect(self._on_refresh)
+
+        self._compact_btn = QPushButton("迷你")
+        self._compact_btn.setStyleSheet(
+            "QPushButton { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
+            "border-radius: 6px; padding: 6px 16px; font-size: 12px; }"
+            "QPushButton:hover { background: #3a3a4a; }"
+        )
+        self._compact_btn.clicked.connect(self._toggle_compact)
 
         settings_btn = QPushButton("设置")
         settings_btn.setStyleSheet(
@@ -281,6 +358,7 @@ class UsagePopup(QWidget):
         settings_btn.clicked.connect(self.settings_requested.emit)
 
         footer_layout.addWidget(refresh_btn)
+        footer_layout.addWidget(self._compact_btn)
         footer_layout.addStretch()
         footer_layout.addWidget(settings_btn)
         self._layout.addLayout(footer_layout)
@@ -321,6 +399,8 @@ class UsagePopup(QWidget):
         Only shows providers that have an API key configured.
         When no keys are configured, displays a setup guide card.
         """
+        self._usages = usages
+
         # Filter out providers without API keys
         active_usages = [u for u in usages if u.status != ProviderStatus.NO_API_KEY]
 
@@ -359,12 +439,23 @@ class UsagePopup(QWidget):
             self._cards_layout.addWidget(guide)
         else:
             for usage in active_usages:
-                card = ProviderCard(usage)
+                card = ProviderCard(usage, compact=self._compact)
                 self._cards_layout.addWidget(card)
 
         self._cards_layout.addStretch()
         self._cards_widget.adjustSize()
         self.adjustSize()
+
+    def _toggle_compact(self) -> None:
+        """Toggle between compact and expanded mode."""
+        self._compact = not self._compact
+        self._compact_btn.setText("展开" if self._compact else "迷你")
+        self.setFixedWidth(420 if self._compact else 380)
+        self.update_usage(self._usages)
+
+    def _on_refresh(self) -> None:
+        """Emit refresh signal (TrayIcon connects to this)."""
+        self.refresh_requested.emit()
 
     def show_at_tray(self) -> None:
         """Show the popup positioned near the system tray."""
@@ -418,6 +509,7 @@ class TrayIcon(QSystemTrayIcon):
         super().__init__(parent)
         self._popup = UsagePopup()
         self._popup.settings_requested.connect(self.settings_requested.emit)
+        self._popup.refresh_requested.connect(self.refresh_requested.emit)
         self._usages: list[UsageData] = []
 
         # Set initial icon
