@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenu,
+    QPushButton,
     QProgressBar,
     QScrollArea,
     QSystemTrayIcon,
@@ -208,6 +209,7 @@ class UsagePopup(QWidget):
     """
 
     closed = Signal()
+    settings_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(
@@ -259,10 +261,29 @@ class UsagePopup(QWidget):
 
         self._layout.addWidget(self._scroll)
 
-        # Footer
-        self._footer = QLabel("左键点击托盘：刷新 | 右键点击托盘：设置 | Esc：关闭面板")
-        self._footer.setStyleSheet("color: #555; font-size: 10px;")
-        self._layout.addWidget(self._footer)
+        # Footer button bar
+        footer_layout = QHBoxLayout()
+        footer_layout.setSpacing(8)
+
+        refresh_btn = QPushButton("刷新")
+        refresh_btn.setStyleSheet(
+            "QPushButton { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
+            "border-radius: 6px; padding: 6px 16px; font-size: 12px; }"
+            "QPushButton:hover { background: #3a3a4a; }"
+        )
+
+        settings_btn = QPushButton("设置")
+        settings_btn.setStyleSheet(
+            "QPushButton { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
+            "border-radius: 6px; padding: 6px 16px; font-size: 12px; }"
+            "QPushButton:hover { background: #3a3a4a; }"
+        )
+        settings_btn.clicked.connect(self.settings_requested.emit)
+
+        footer_layout.addWidget(refresh_btn)
+        footer_layout.addStretch()
+        footer_layout.addWidget(settings_btn)
+        self._layout.addLayout(footer_layout)
 
         # Install event filter on all children so we can intercept drag
         self._install_drag_filter(self)
@@ -295,20 +316,49 @@ class UsagePopup(QWidget):
         return super().eventFilter(obj, event)
 
     def update_usage(self, usages: list[UsageData]) -> None:
-        """Update the display with new usage data."""
+        """Update the display with new usage data.
+
+        Only shows providers that have an API key configured.
+        When no keys are configured, displays a setup guide card.
+        """
+        # Filter out providers without API keys
+        active_usages = [u for u in usages if u.status != ProviderStatus.NO_API_KEY]
+
         # Clear existing cards
         while self._cards_layout.count():
             item = self._cards_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        if not usages:
-            empty = QLabel("暂无已配置的服务商")
-            empty.setStyleSheet("color: #888; font-size: 13px;")
-            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._cards_layout.addWidget(empty)
+        if not active_usages:
+            # Show setup guide card
+            guide = QFrame()
+            guide.setStyleSheet(
+                "QFrame { background: #1e1e2e; border: 1px solid #333; "
+                "border-radius: 8px; padding: 16px; }"
+            )
+            guide_layout = QVBoxLayout(guide)
+            guide_layout.setContentsMargins(16, 16, 16, 16)
+            guide_layout.setSpacing(12)
+
+            hint = QLabel("请先在设置中配置您的 API 密钥")
+            hint.setStyleSheet("color: #888; font-size: 13px;")
+            hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            hint.setWordWrap(True)
+            guide_layout.addWidget(hint)
+
+            open_btn = QPushButton("打开设置")
+            open_btn.setStyleSheet(
+                "QPushButton { background: #4CAF50; color: white; border: none; "
+                "border-radius: 6px; padding: 8px 24px; font-size: 13px; font-weight: bold; }"
+                "QPushButton:hover { background: #45a049; }"
+            )
+            open_btn.clicked.connect(self.settings_requested.emit)
+            guide_layout.addWidget(open_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+            self._cards_layout.addWidget(guide)
         else:
-            for usage in usages:
+            for usage in active_usages:
                 card = ProviderCard(usage)
                 self._cards_layout.addWidget(card)
 
@@ -367,6 +417,7 @@ class TrayIcon(QSystemTrayIcon):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._popup = UsagePopup()
+        self._popup.settings_requested.connect(self.settings_requested.emit)
         self._usages: list[UsageData] = []
 
         # Set initial icon
@@ -432,20 +483,21 @@ class TrayIcon(QSystemTrayIcon):
         if self._popup.isVisible():
             self._popup.update_usage(usages)
 
-        # Calculate aggregate percentage for the tray icon
+        # Calculate aggregate percentage for the tray icon (only providers with keys)
+        active_usages = [u for u in usages if u.status != ProviderStatus.NO_API_KEY]
         percents = [
             u.windows[0].used_percent
-            for u in usages
+            for u in active_usages
             if u.status == ProviderStatus.OK and u.windows
         ]
         avg = sum(percents) / len(percents) if percents else None
         self._update_icon(avg)
 
-        # Update tooltip
+        # Update tooltip (only providers with keys)
         lines = []
-        for u in usages:
+        for u in active_usages:
             lines.append(f"{u.provider_name}: {u.summary_text}")
-        self.setToolTip("\n".join(lines) if lines else "GlmBar - 暂无服务商")
+        self.setToolTip("\n".join(lines) if lines else "GlmBar - 请配置 API 密钥")
 
     def _update_icon(self, percent: float | None) -> None:
         """Update the tray icon with current usage."""
