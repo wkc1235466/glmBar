@@ -459,6 +459,9 @@ class UsagePopup(QWidget):
 
     def _apply_window_size(self) -> None:
         """Apply the correct window size based on current mode."""
+        # Save current position before resizing
+        current_pos = self.pos()
+
         if self._compact:
             # Compact mode: size to fit the compact label
             if self._compact_label is not None:
@@ -480,10 +483,16 @@ class UsagePopup(QWidget):
             self.setFixedWidth(380)
             self.adjustSize()
 
+        # Restore position after resizing
+        self.move(current_pos)
+
     def _toggle_compact(self) -> None:
         """Toggle between compact and expanded mode."""
-        # Pause updates to prevent flickering
-        self.setUpdatesEnabled(False)
+        # Save current position before any changes
+        current_pos = self.pos()
+
+        # Hide window during transition to prevent flicker
+        self.hide()
 
         self._compact = not self._compact
         if self._compact:
@@ -504,8 +513,8 @@ class UsagePopup(QWidget):
             self._layout.setContentsMargins(16, 12, 16, 12)
         self.update_usage(self._usages)
 
-        # Resume updates
-        self.setUpdatesEnabled(True)
+        # Restore position and show
+        self.move(current_pos)
         self.show()
         self.raise_()
 
