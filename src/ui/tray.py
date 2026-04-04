@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QProgressBar,
-    QScrollArea,
     QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
@@ -126,7 +125,9 @@ class ProviderCard(QFrame):
 
     def _build_compact(self, usage: UsageData) -> None:
         """Single QLabel with rich text — height is exactly the font height."""
-        parts = [f'<span style="color:#e0e0e0; font-weight:bold;">智谱：</span>']
+        # 显示简短名称：智谱、百度等
+        short_name = usage.provider_name.split('(')[0].split('（')[0].strip()
+        parts = [f'<span style="color:#e0e0e0; font-weight:bold;">{short_name}：</span>']
         for i, w in enumerate(usage.windows):
             if i > 0:
                 parts.append('<span style="color:#555;"> | </span>')
@@ -269,6 +270,8 @@ class UsagePopup(QWidget):
         self._compact = False
         self._usages: list[UsageData] = []
         self._compact_label: QLabel | None = None
+        self._cards: list[ProviderCard] = []
+        self._guide_frame: QFrame | None = None
         self._dblclick_from_button = False
 
         self._container = QFrame(self)
@@ -292,21 +295,8 @@ class UsagePopup(QWidget):
         )
         self._layout.addWidget(self._title_label)
 
-        # Cards container inside a scroll area
-        self._scroll = QScrollArea()
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._scroll.setStyleSheet("QScrollArea { background: transparent; }")
-        self._scroll.setMaximumHeight(500)
-
-        self._cards_widget = QWidget()
-        self._cards_widget.setStyleSheet("background: transparent;")
-        self._cards_layout = QVBoxLayout(self._cards_widget)
-        self._cards_layout.setSpacing(8)
-        self._cards_layout.setContentsMargins(0, 0, 0, 0)
-        self._scroll.setWidget(self._cards_widget)
-
-        self._layout.addWidget(self._scroll)
+        # Cards will be added directly to _layout (no container widget)
+        self._cards: list[ProviderCard] = []
 
         # Footer button bar
         self._footer = QWidget()
@@ -386,18 +376,25 @@ class UsagePopup(QWidget):
             self._compact_label.deleteLater()
             self._compact_label = None
 
-        # Clear scroll-area cards
-        while self._cards_layout.count():
-            item = self._cards_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        # Remove old cards
+        for card in self._cards:
+            self._layout.removeWidget(card)
+            card.deleteLater()
+        self._cards.clear()
+
+        # Also remove any guide frame
+        if hasattr(self, '_guide_frame') and self._guide_frame is not None:
+            self._layout.removeWidget(self._guide_frame)
+            self._guide_frame.deleteLater()
+            self._guide_frame = None
 
         if self._compact and active_usages:
-            # Compact: bypass scroll area, single rich-text label
-            self._scroll.hide()
+            # Compact: show single rich-text label
             lines = []
             for usage in active_usages:
-                parts = [f'<span style="color:#e0e0e0; font-weight:bold;">智谱：</span>']
+                # 显示简短名称
+                short_name = usage.provider_name.split('(')[0].split('（')[0].strip()
+                parts = [f'<span style="color:#e0e0e0; font-weight:bold;">{short_name}：</span>']
                 for i, w in enumerate(usage.windows):
                     if i > 0:
                         parts.append('<span style="color:#555;"> | </span>')
@@ -423,14 +420,14 @@ class UsagePopup(QWidget):
             self._compact_label.setContentsMargins(0, 0, 0, 0)
             self._layout.insertWidget(1, self._compact_label)
         else:
-            self._scroll.show()
+            # Expanded mode: add cards directly to layout
             if not active_usages:
-                guide = QFrame()
-                guide.setStyleSheet(
+                self._guide_frame = QFrame()
+                self._guide_frame.setStyleSheet(
                     "QFrame { background: #1e1e2e; border: 1px solid #333; "
                     "border-radius: 8px; padding: 16px; }"
                 )
-                guide_layout = QVBoxLayout(guide)
+                guide_layout = QVBoxLayout(self._guide_frame)
                 guide_layout.setContentsMargins(16, 16, 16, 16)
                 guide_layout.setSpacing(12)
 
@@ -449,21 +446,39 @@ class UsagePopup(QWidget):
                 open_btn.clicked.connect(self.settings_requested.emit)
                 guide_layout.addWidget(open_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
-                self._cards_layout.addWidget(guide)
+                self._layout.insertWidget(1, self._guide_frame)
             else:
                 for usage in active_usages:
                     card = ProviderCard(usage, compact=False)
-                    self._cards_layout.addWidget(card)
+                    card.show()  # Ensure card is visible
+                    self._cards.append(card)
+                    self._layout.insertWidget(self._layout.indexOf(self._footer), card)
 
-            self._cards_layout.addStretch()
-            self._cards_widget.adjustSize()
-
-        self.adjustSize()
-        if self._compact and self._compact_label is not None:
-            # Explicitly set size: container padding + label size
-            hint = self._compact_label.sizeHint()
-            self.setFixedSize(hint.width() + 16, hint.height() + 8)
         self._install_drag_filter(self)
+        self._apply_window_size()
+
+    def _apply_window_size(self) -> None:
+        """Apply the correct window size based on current mode."""
+        if self._compact:
+            # Compact mode: size to fit the compact label
+            if self._compact_label is not None:
+                hint = self._compact_label.sizeHint()
+                self.setFixedSize(hint.width() + 16, hint.height() + 8)
+        else:
+            # Expanded mode: fixed width, auto height
+            # First remove any fixed size constraints
+            self.setMinimumSize(0, 0)
+            self.setMaximumSize(16777215, 16777215)
+
+            # Force all cards to be visible and update geometry
+            for card in self._cards:
+                card.show()
+                card.updateGeometry()
+            self._container.updateGeometry()
+
+            # Then set fixed width only
+            self.setFixedWidth(380)
+            self.adjustSize()
 
     def _toggle_compact(self) -> None:
         """Toggle between compact and expanded mode."""
@@ -476,10 +491,6 @@ class UsagePopup(QWidget):
                 "border-radius: 6px; }"
             )
             self._layout.setContentsMargins(8, 4, 8, 4)
-            self.setMinimumWidth(0)
-            self.setMaximumWidth(600)
-            self.setMinimumHeight(0)
-            self.setMaximumHeight(16777215)
         else:
             self._title_label.show()
             self._footer.show()
@@ -488,11 +499,6 @@ class UsagePopup(QWidget):
                 "border-radius: 12px; }"
             )
             self._layout.setContentsMargins(16, 12, 16, 12)
-            self.setFixedWidth(380)
-            self.setMinimumWidth(0)
-            self.setMaximumWidth(600)
-            self.setMinimumHeight(0)
-            self.setMaximumHeight(16777215)
         self.update_usage(self._usages)
         self.show()
         self.raise_()

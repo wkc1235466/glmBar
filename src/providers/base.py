@@ -76,6 +76,7 @@ class BaseProvider(abc.ABC):
         env_key: str = "",
         api_key: str = "",
         extra_config: dict[str, Any] | None = None,
+        **kwargs,  # Accept additional config fields
     ):
         self.provider_id = provider_id
         self.name = name
@@ -83,7 +84,9 @@ class BaseProvider(abc.ABC):
         self.requires_api_key = requires_api_key
         self.env_key = env_key
         self.api_key = api_key
+        # Merge explicit extra_config with any additional kwargs
         self.extra_config = extra_config or {}
+        self.extra_config.update(kwargs)
 
     def get_api_key(self) -> str | None:
         """Get API key from instance or environment variable."""
