@@ -272,6 +272,7 @@ class UsagePopup(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         # Prevent window from appearing in taskbar during resize
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setWindowTitle("")  # Prevent Windows from showing class name as title
         self.setFixedWidth(380)
         self.setStyleSheet("background: transparent;")
         self._drag_pos = None
@@ -279,8 +280,6 @@ class UsagePopup(QWidget):
         self._dragging = False
         self._compact = False
         self._usages: list[UsageData] = []
-        self._compact_label: QLabel | None = None
-        self._compact_container: QWidget | None = None
         self._cards: list[ProviderCard] = []
         self._guide_frame: QFrame | None = None
         self._dblclick_from_button = False
@@ -306,7 +305,24 @@ class UsagePopup(QWidget):
         )
         self._layout.addWidget(self._title_label)
 
-        # Cards will be added directly to _layout (no container widget)
+        # Two persistent pages — toggle only switches visibility,
+        # no widget is destroyed or created during toggle ⇒ zero flicker.
+        self._expanded_page = QWidget()
+        self._expanded_page.setStyleSheet("background: transparent;")
+        self._expanded_layout = QVBoxLayout(self._expanded_page)
+        self._expanded_layout.setContentsMargins(0, 0, 0, 0)
+        self._expanded_layout.setSpacing(8)
+        self._layout.addWidget(self._expanded_page)
+
+        self._compact_page = QWidget()
+        self._compact_page.setStyleSheet("background: transparent;")
+        self._compact_layout = QVBoxLayout(self._compact_page)
+        self._compact_layout.setContentsMargins(0, 0, 0, 0)
+        self._compact_layout.setSpacing(4)
+        self._layout.addWidget(self._compact_page)
+        self._compact_page.hide()  # start in expanded mode
+
+        # Cards will be added directly to _expanded_page layout
         self._cards: list[ProviderCard] = []
 
         # Footer button bar
@@ -372,62 +388,83 @@ class UsagePopup(QWidget):
                 return False
         return super().eventFilter(obj, event)
 
+    @staticmethod
+    def _clear_layout(layout) -> None:
+        """Remove and schedule deletion of all items in a layout."""
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+            sub = item.layout()
+            if sub is not None:
+                UsagePopup._clear_layout(sub)
+
     def update_usage(self, usages: list[UsageData]) -> None:
         """Update the display with new usage data.
 
-        Only shows providers that have an API key configured.
-        When no keys are configured, displays a setup guide card.
+        Builds content into BOTH pages so that _toggle_compact can
+        switch pages instantly without rebuilding anything.
         """
         self._usages = usages
         active_usages = [u for u in usages if u.status != ProviderStatus.NO_API_KEY]
 
-        # Remove old compact label if any
-        if self._compact_label is not None:
-            self._layout.removeWidget(self._compact_label)
-            self._compact_label.deleteLater()
-            self._compact_label = None
-
-        # Remove old compact container if any
-        if self._compact_container is not None:
-            self._layout.removeWidget(self._compact_container)
-            self._compact_container.deleteLater()
-            self._compact_container = None
-
-        # Remove old cards
-        for card in self._cards:
-            self._layout.removeWidget(card)
-            card.deleteLater()
+        # ---- Rebuild expanded page ----
+        self._clear_layout(self._expanded_layout)
         self._cards.clear()
+        self._guide_frame = None
 
-        # Also remove any guide frame
-        if hasattr(self, '_guide_frame') and self._guide_frame is not None:
-            self._layout.removeWidget(self._guide_frame)
-            self._guide_frame.deleteLater()
-            self._guide_frame = None
+        if not active_usages:
+            # No API keys → show setup guide
+            guide = QFrame()
+            guide.setStyleSheet(
+                "QFrame { background: #1e1e2e; border: 1px solid #333; "
+                "border-radius: 8px; padding: 16px; }"
+            )
+            guide_layout = QVBoxLayout(guide)
+            guide_layout.setContentsMargins(16, 16, 16, 16)
+            guide_layout.setSpacing(12)
 
-        if self._compact and active_usages:
-            # Compact: show provider blocks with aligned layout
-            self._compact_container = QWidget()
-            self._compact_container.setStyleSheet("background: transparent;")
-            compact_layout = QVBoxLayout(self._compact_container)
-            compact_layout.setContentsMargins(0, 0, 0, 0)
-            compact_layout.setSpacing(4)
+            hint = QLabel("请先在设置中配置您的 API 密钥")
+            hint.setStyleSheet("color: #888; font-size: 13px;")
+            hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            hint.setWordWrap(True)
+            guide_layout.addWidget(hint)
 
-            # 固定的名称宽度（能够显示"百度千帆"4个中文字符）
+            open_btn = QPushButton("打开设置")
+            open_btn.setStyleSheet(
+                "QPushButton { background: #4CAF50; color: white; border: none; "
+                "border-radius: 6px; padding: 8px 24px; font-size: 13px; font-weight: bold; }"
+                "QPushButton:hover { background: #45a049; }"
+            )
+            open_btn.clicked.connect(self.settings_requested.emit)
+            guide_layout.addWidget(open_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+            self._guide_frame = guide
+            self._expanded_layout.addWidget(guide)
+        else:
+            for usage in active_usages:
+                card = ProviderCard(usage, compact=False)
+                card.show()
+                self._cards.append(card)
+                self._expanded_layout.addWidget(card)
+
+        # ---- Rebuild compact page ----
+        self._clear_layout(self._compact_layout)
+
+        if active_usages:
             name_width = 65
 
             for usage in active_usages:
-                # 显示简短名称
                 short_name = usage.provider_name.split('(')[0].split('（')[0].strip()
 
-                # 创建平台行容器
                 provider_row = QWidget()
                 provider_row.setStyleSheet("background: transparent;")
                 row_layout = QHBoxLayout(provider_row)
                 row_layout.setContentsMargins(0, 0, 0, 0)
                 row_layout.setSpacing(4)
 
-                # 左侧：平台名称方块
+                # Left: platform name block
                 name_box = QFrame()
                 name_box.setStyleSheet(
                     "QFrame { background: #1e1e2e; border: 1px solid #333; border-radius: 4px; }"
@@ -437,7 +474,6 @@ class UsagePopup(QWidget):
                 name_layout.setContentsMargins(4, 4, 4, 4)
                 name_layout.setSpacing(2)
 
-                # 上下 stretch 让名称垂直居中
                 name_layout.addStretch()
                 name_label = QLabel(short_name)
                 name_label.setStyleSheet("color: #e0e0e0; font-size: 11px; font-weight: bold;")
@@ -445,11 +481,10 @@ class UsagePopup(QWidget):
                 name_layout.addWidget(name_label)
                 name_layout.addStretch()
 
-                # 右侧对齐：设置name_box的最小高度
                 name_box.setMinimumHeight(0)
                 row_layout.addWidget(name_box)
 
-                # 右侧：配额列表
+                # Right: quota list
                 quota_container = QWidget()
                 quota_container.setStyleSheet("background: transparent;")
                 quota_layout = QVBoxLayout(quota_container)
@@ -457,14 +492,12 @@ class UsagePopup(QWidget):
                 quota_layout.setSpacing(2)
 
                 if not usage.windows:
-                    # 无数据时显示错误状态
                     error_label = QLabel("无数据" if usage.status == ProviderStatus.OK else ("错误" if usage.status == ProviderStatus.ERROR else "未授权"))
                     error_color = "#888" if usage.status == ProviderStatus.OK else ("#F44336" if usage.status == ProviderStatus.ERROR else "#FF9800")
                     error_label.setStyleSheet(f"color: {error_color}; font-size: 12px;")
                     quota_layout.addWidget(error_label)
                 else:
                     for w in usage.windows:
-                        # 简化标签名称
                         label = w.label
                         if "Token" in label:
                             label = "Token"
@@ -479,25 +512,21 @@ class UsagePopup(QWidget):
 
                         c = ProviderCard._pct_color(w.used_percent)
 
-                        # 每行配额：标签 进度条 百分比
                         quota_row = QHBoxLayout()
                         quota_row.setContentsMargins(0, 0, 0, 0)
                         quota_row.setSpacing(4)
 
-                        # 标签（固定宽度左对齐）
                         label_widget = QLabel(label)
                         label_widget.setFixedWidth(40)
                         label_widget.setStyleSheet("color: #888; font-size: 11px;")
                         quota_row.addWidget(label_widget)
 
-                        # 进度条（使用UsageBar组件）
                         bar_widget = UsageBar()
                         bar_widget.setFixedHeight(10)
                         bar_widget.setFixedWidth(80)
                         bar_widget.set_percent(w.used_percent)
                         quota_row.addWidget(bar_widget)
 
-                        # 百分比
                         pct_label = QLabel(f"{w.used_percent:.0f}%")
                         pct_label.setStyleSheet(f"color: {c}; font-size: 11px; font-weight: bold;")
                         pct_label.setFixedWidth(32)
@@ -507,82 +536,46 @@ class UsagePopup(QWidget):
 
                 row_layout.addWidget(quota_container)
 
-                # 同步名称方块高度与配额容器高度
                 quota_container.adjustSize()
                 name_box.setMinimumHeight(quota_container.sizeHint().height())
 
-                compact_layout.addWidget(provider_row)
+                self._compact_layout.addWidget(provider_row)
 
-            self._layout.insertWidget(1, self._compact_container)
+        # ---- Show the correct page ----
+        if self._compact:
+            self._expanded_page.hide()
+            self._compact_page.show()
         else:
-            # Expanded mode: add cards directly to layout
-            if not active_usages:
-                self._guide_frame = QFrame()
-                self._guide_frame.setStyleSheet(
-                    "QFrame { background: #1e1e2e; border: 1px solid #333; "
-                    "border-radius: 8px; padding: 16px; }"
-                )
-                guide_layout = QVBoxLayout(self._guide_frame)
-                guide_layout.setContentsMargins(16, 16, 16, 16)
-                guide_layout.setSpacing(12)
-
-                hint = QLabel("请先在设置中配置您的 API 密钥")
-                hint.setStyleSheet("color: #888; font-size: 13px;")
-                hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                hint.setWordWrap(True)
-                guide_layout.addWidget(hint)
-
-                open_btn = QPushButton("打开设置")
-                open_btn.setStyleSheet(
-                    "QPushButton { background: #4CAF50; color: white; border: none; "
-                    "border-radius: 6px; padding: 8px 24px; font-size: 13px; font-weight: bold; }"
-                    "QPushButton:hover { background: #45a049; }"
-                )
-                open_btn.clicked.connect(self.settings_requested.emit)
-                guide_layout.addWidget(open_btn, alignment=Qt.AlignmentFlag.AlignCenter)
-
-                self._layout.insertWidget(1, self._guide_frame)
-            else:
-                for usage in active_usages:
-                    card = ProviderCard(usage, compact=False)
-                    card.show()  # Ensure card is visible
-                    self._cards.append(card)
-                    self._layout.insertWidget(self._layout.indexOf(self._footer), card)
+            self._compact_page.hide()
+            self._expanded_page.show()
 
         self._install_drag_filter(self)
         self._apply_window_size()
 
     def _apply_window_size(self) -> None:
         """Apply the correct window size based on current mode."""
+        # Lift old fixed-size constraints so layout can recalculate freely
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(16777215, 16777215)
+
+        # Force layout recalculation, then read the popup's own sizeHint
+        # which already includes title, footer, margins, and the visible page.
+        self._container.updateGeometry()
+        self.layout().activate()
+        hint = self.sizeHint()
+
         if self._compact:
-            # Compact mode: size to fit the compact container
-            if self._compact_container is not None:
-                self._compact_container.adjustSize()
-                hint = self._compact_container.sizeHint()
-                # 加上容器内边距
-                self.setFixedSize(hint.width() + 32, hint.height() + 24)
+            self.setFixedSize(hint.width(), hint.height())
         else:
-            # Expanded mode: fixed width, auto height
-            # First remove any fixed size constraints
-            self.setMinimumSize(0, 0)
-            self.setMaximumSize(16777215, 16777215)
-
-            # Force all cards to be visible and update geometry
-            for card in self._cards:
-                card.show()
-                card.updateGeometry()
-            self._container.updateGeometry()
-
-            # Then set fixed width only
-            self.setFixedWidth(380)
-            self.adjustSize()
+            self.setFixedSize(380, hint.height())
 
     def _toggle_compact(self) -> None:
-        """Toggle between compact and expanded mode."""
-        # Save current position
-        pos = self.pos()
+        """Toggle between compact and expanded mode.
 
-        # Disable updates during transition
+        Only switches page visibility — no widget creation or destruction.
+        """
+        pos = self.pos()
+        self.move(-10000, -10000)
         self.setUpdatesEnabled(False)
 
         self._compact = not self._compact
@@ -594,6 +587,8 @@ class UsagePopup(QWidget):
                 "border-radius: 6px; }"
             )
             self._layout.setContentsMargins(8, 4, 8, 4)
+            self._expanded_page.hide()
+            self._compact_page.show()
         else:
             self._title_label.show()
             self._footer.show()
@@ -602,10 +597,11 @@ class UsagePopup(QWidget):
                 "border-radius: 12px; }"
             )
             self._layout.setContentsMargins(16, 12, 16, 12)
+            self._compact_page.hide()
+            self._expanded_page.show()
 
-        self.update_usage(self._usages)
+        self._apply_window_size()
 
-        # Restore position and re-enable updates
         self.move(pos)
         self.setUpdatesEnabled(True)
 
