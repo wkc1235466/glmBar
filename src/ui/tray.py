@@ -123,6 +123,13 @@ class ProviderCard(QFrame):
             return "#FFC107"
         return "#F44336"
 
+    @staticmethod
+    def _render_progress_bar(percent: float, width: int = 10) -> str:
+        """Render a Unicode progress bar."""
+        filled = round((percent / 100) * width)
+        empty = width - filled
+        return "█" * filled + "░" * empty
+
     def _build_compact(self, usage: UsageData) -> None:
         """Single QLabel with rich text — height is exactly the font height."""
         # 显示简短名称：智谱、百度等
@@ -259,9 +266,12 @@ class UsagePopup(QWidget):
             Qt.WindowType.Window
             | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool,
+            | Qt.WindowType.Tool
+            | Qt.WindowType.NoDropShadowWindowHint,
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        # Prevent window from appearing in taskbar during resize
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setFixedWidth(380)
         self.setStyleSheet("background: transparent;")
         self._drag_pos = None
@@ -270,6 +280,7 @@ class UsagePopup(QWidget):
         self._compact = False
         self._usages: list[UsageData] = []
         self._compact_label: QLabel | None = None
+        self._compact_container: QWidget | None = None
         self._cards: list[ProviderCard] = []
         self._guide_frame: QFrame | None = None
         self._dblclick_from_button = False
@@ -376,6 +387,12 @@ class UsagePopup(QWidget):
             self._compact_label.deleteLater()
             self._compact_label = None
 
+        # Remove old compact container if any
+        if self._compact_container is not None:
+            self._layout.removeWidget(self._compact_container)
+            self._compact_container.deleteLater()
+            self._compact_container = None
+
         # Remove old cards
         for card in self._cards:
             self._layout.removeWidget(card)
@@ -389,36 +406,114 @@ class UsagePopup(QWidget):
             self._guide_frame = None
 
         if self._compact and active_usages:
-            # Compact: show single rich-text label
-            lines = []
+            # Compact: show provider blocks with aligned layout
+            self._compact_container = QWidget()
+            self._compact_container.setStyleSheet("background: transparent;")
+            compact_layout = QVBoxLayout(self._compact_container)
+            compact_layout.setContentsMargins(0, 0, 0, 0)
+            compact_layout.setSpacing(4)
+
+            # 固定的名称宽度（能够显示"百度千帆"4个中文字符）
+            name_width = 65
+
             for usage in active_usages:
                 # 显示简短名称
                 short_name = usage.provider_name.split('(')[0].split('（')[0].strip()
-                parts = [f'<span style="color:#e0e0e0; font-weight:bold;">{short_name}：</span>']
-                for i, w in enumerate(usage.windows):
-                    if i > 0:
-                        parts.append('<span style="color:#555;"> | </span>')
-                    short = w.label.replace("Token 配额", "Token").replace("MCP/时间配额", "MCP")
-                    c = ProviderCard._pct_color(w.used_percent)
-                    parts.append(
-                        f'<span style="color:{c}; font-weight:bold;">'
-                        f'{short}：{w.used_percent:.0f}%</span>'
-                    )
-                if not usage.windows:
-                    if usage.status == ProviderStatus.ERROR:
-                        parts.append('<span style="color:#F44336;">错误</span>')
-                    elif usage.status == ProviderStatus.UNAUTHORIZED:
-                        parts.append('<span style="color:#FF9800;">未授权</span>')
-                if usage.balance is not None:
-                    parts.append(f'<span style="color:#4CAF50;"> ${usage.balance:.2f}</span>')
-                lines.append("".join(parts))
 
-            self._compact_label = QLabel("<br>".join(lines))
-            self._compact_label.setStyleSheet(
-                "background: transparent; padding: 0; margin: 0; font-size: 12px;"
-            )
-            self._compact_label.setContentsMargins(0, 0, 0, 0)
-            self._layout.insertWidget(1, self._compact_label)
+                # 创建平台行容器
+                provider_row = QWidget()
+                provider_row.setStyleSheet("background: transparent;")
+                row_layout = QHBoxLayout(provider_row)
+                row_layout.setContentsMargins(0, 0, 0, 0)
+                row_layout.setSpacing(4)
+
+                # 左侧：平台名称方块
+                name_box = QFrame()
+                name_box.setStyleSheet(
+                    "QFrame { background: #1e1e2e; border: 1px solid #333; border-radius: 4px; }"
+                )
+                name_box.setFixedWidth(name_width)
+                name_layout = QVBoxLayout(name_box)
+                name_layout.setContentsMargins(4, 4, 4, 4)
+                name_layout.setSpacing(2)
+
+                # 上下 stretch 让名称垂直居中
+                name_layout.addStretch()
+                name_label = QLabel(short_name)
+                name_label.setStyleSheet("color: #e0e0e0; font-size: 11px; font-weight: bold;")
+                name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                name_layout.addWidget(name_label)
+                name_layout.addStretch()
+
+                # 右侧对齐：设置name_box的最小高度
+                name_box.setMinimumHeight(0)
+                row_layout.addWidget(name_box)
+
+                # 右侧：配额列表
+                quota_container = QWidget()
+                quota_container.setStyleSheet("background: transparent;")
+                quota_layout = QVBoxLayout(quota_container)
+                quota_layout.setContentsMargins(0, 0, 0, 0)
+                quota_layout.setSpacing(2)
+
+                if not usage.windows:
+                    # 无数据时显示错误状态
+                    error_label = QLabel("无数据" if usage.status == ProviderStatus.OK else ("错误" if usage.status == ProviderStatus.ERROR else "未授权"))
+                    error_color = "#888" if usage.status == ProviderStatus.OK else ("#F44336" if usage.status == ProviderStatus.ERROR else "#FF9800")
+                    error_label.setStyleSheet(f"color: {error_color}; font-size: 12px;")
+                    quota_layout.addWidget(error_label)
+                else:
+                    for w in usage.windows:
+                        # 简化标签名称
+                        label = w.label
+                        if "Token" in label:
+                            label = "Token"
+                        elif "5小时" in label or "5Hour" in label.lower():
+                            label = "5小时"
+                        elif "每周" in label or "week" in label.lower():
+                            label = "每周"
+                        elif "每月" in label or "month" in label.lower():
+                            label = "每月"
+                        elif "MCP" in label or "时间" in label:
+                            label = "MCP"
+
+                        c = ProviderCard._pct_color(w.used_percent)
+
+                        # 每行配额：标签 进度条 百分比
+                        quota_row = QHBoxLayout()
+                        quota_row.setContentsMargins(0, 0, 0, 0)
+                        quota_row.setSpacing(4)
+
+                        # 标签（固定宽度左对齐）
+                        label_widget = QLabel(label)
+                        label_widget.setFixedWidth(40)
+                        label_widget.setStyleSheet("color: #888; font-size: 11px;")
+                        quota_row.addWidget(label_widget)
+
+                        # 进度条（使用UsageBar组件）
+                        bar_widget = UsageBar()
+                        bar_widget.setFixedHeight(10)
+                        bar_widget.setFixedWidth(80)
+                        bar_widget.set_percent(w.used_percent)
+                        quota_row.addWidget(bar_widget)
+
+                        # 百分比
+                        pct_label = QLabel(f"{w.used_percent:.0f}%")
+                        pct_label.setStyleSheet(f"color: {c}; font-size: 11px; font-weight: bold;")
+                        pct_label.setFixedWidth(32)
+                        quota_row.addWidget(pct_label)
+
+                        quota_layout.addLayout(quota_row)
+
+                row_layout.addWidget(quota_container)
+
+                # 同步名称方块高度与配额容器高度
+                quota_container.adjustSize()
+                name_box.setMinimumHeight(quota_container.sizeHint().height())
+
+                compact_layout.addWidget(provider_row)
+
+            self._layout.insertWidget(1, self._compact_container)
         else:
             # Expanded mode: add cards directly to layout
             if not active_usages:
@@ -459,14 +554,13 @@ class UsagePopup(QWidget):
 
     def _apply_window_size(self) -> None:
         """Apply the correct window size based on current mode."""
-        # Save current position before resizing
-        current_pos = self.pos()
-
         if self._compact:
-            # Compact mode: size to fit the compact label
-            if self._compact_label is not None:
-                hint = self._compact_label.sizeHint()
-                self.setFixedSize(hint.width() + 16, hint.height() + 8)
+            # Compact mode: size to fit the compact container
+            if self._compact_container is not None:
+                self._compact_container.adjustSize()
+                hint = self._compact_container.sizeHint()
+                # 加上容器内边距
+                self.setFixedSize(hint.width() + 32, hint.height() + 24)
         else:
             # Expanded mode: fixed width, auto height
             # First remove any fixed size constraints
@@ -483,16 +577,13 @@ class UsagePopup(QWidget):
             self.setFixedWidth(380)
             self.adjustSize()
 
-        # Restore position after resizing
-        self.move(current_pos)
-
     def _toggle_compact(self) -> None:
         """Toggle between compact and expanded mode."""
-        # Save current position before any changes
-        current_pos = self.pos()
+        # Save current position
+        pos = self.pos()
 
-        # Hide window during transition to prevent flicker
-        self.hide()
+        # Disable updates during transition
+        self.setUpdatesEnabled(False)
 
         self._compact = not self._compact
         if self._compact:
@@ -511,12 +602,12 @@ class UsagePopup(QWidget):
                 "border-radius: 12px; }"
             )
             self._layout.setContentsMargins(16, 12, 16, 12)
+
         self.update_usage(self._usages)
 
-        # Restore position and show
-        self.move(current_pos)
-        self.show()
-        self.raise_()
+        # Restore position and re-enable updates
+        self.move(pos)
+        self.setUpdatesEnabled(True)
 
     def _on_refresh(self) -> None:
         """Emit refresh signal (TrayIcon connects to this)."""
