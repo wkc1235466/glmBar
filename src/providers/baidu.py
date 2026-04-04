@@ -12,8 +12,7 @@ from .base import BaseProvider, ProviderStatus, UsageData, UsageWindow
 class BaiduQianfanProvider(BaseProvider):
     """百度千帆编程套餐用量 Provider（Cookie 认证）。
 
-    通过 rookiepy 自动读取浏览器 Cookie 或用户手动配置的 Cookie
-    调用千帆内部 API 获取用量信息。
+    用户通过在浏览器中复制 curl 命令来配置认证信息。
     """
 
     API_URL = "https://console.bce.baidu.com/api/qianfan/charge/codingPlan/resourceList"
@@ -32,25 +31,14 @@ class BaiduQianfanProvider(BaseProvider):
         return None
 
     def _get_cookie_header(self) -> str | None:
-        # 1. 用户手动配置的 cookie
         manual = self.extra_config.get("cookie", "")
         if manual:
             return manual
-
-        # 2. rookiepy 自动读取
-        try:
-            import rookiepy
-
-            cookie_jar = rookiepy.chrome(
-                domains=["baidu.com", "bce.baidu.com", "qianfan.baidubce.com"]
-            )
-            return rookiepy.to_cookie_header(cookie_jar)
-        except Exception:
-            return None
+        return None
 
     def _get_auth_headers(self) -> dict[str, str]:
         """从 extra_config 获取额外的认证请求头。"""
-        headers = {}
+        headers: dict[str, str] = {}
         csrftoken = self.extra_config.get("csrftoken", "")
         if csrftoken:
             headers["csrftoken"] = csrftoken
@@ -66,7 +54,7 @@ class BaiduQianfanProvider(BaseProvider):
                 provider_id=self.provider_id,
                 provider_name=self.name,
                 status=ProviderStatus.NO_API_KEY,
-                error_message="请先在浏览器中登录百度智能云",
+                error_message="请先在设置中粘贴 curl 命令",
             )
 
         headers = {
@@ -185,8 +173,11 @@ class BaiduQianfanProvider(BaseProvider):
         )
 
     def get_display_config(self) -> dict[str, str]:
-        return {
-            "cookie": "text",
-            "csrftoken": "text",
-            "x-bce-jt": "text",
-        }
+        return {"curl": "textarea"}
+
+    @classmethod
+    def parse_curl(cls, curl_text: str) -> dict[str, str]:
+        """解析 curl 命令文本，返回提取的认证字段。"""
+        from src.utils.curl_parser import parse_curl
+
+        return parse_curl(curl_text)

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal, QUrl
+from PySide6.QtGui import QFont, QDesktopServices
 from PySide6.QtWidgets import (
+    QSizePolicy,
     QComboBox,
     QDialog,
     QFrame,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -164,6 +166,8 @@ class ProviderEditDialog(QDialog):
             label_text = field_name.replace("_", " ").title()
             if field_type == "password":
                 label_text = "API 密钥"
+            elif field_type == "textarea":
+                label_text = "curl 命令"
             label = QLabel(label_text)
             self._fields_layout.addWidget(label)
 
@@ -172,10 +176,32 @@ class ProviderEditDialog(QDialog):
                 combo = QComboBox()
                 region_labels = {"china": "国内", "global": "国际"}
                 for opt in options:
-                    label = region_labels.get(opt, opt)
-                    combo.addItem(label, opt)
+                    opt_label = region_labels.get(opt, opt)
+                    combo.addItem(opt_label, opt)
                 self._fields[field_name] = combo
                 self._fields_layout.addWidget(combo)
+            elif field_type == "textarea":
+                text_edit = QTextEdit()
+                text_edit.setMaximumHeight(120)
+                text_edit.setPlaceholderText("粘贴浏览器中复制的 curl 命令...")
+                text_edit.setStyleSheet(
+                    "QTextEdit { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
+                    "border-radius: 4px; padding: 6px; font-family: monospace; font-size: 11px; }"
+                    "QTextEdit:focus { border-color: #6C63FF; }"
+                )
+                self._fields[field_name] = text_edit
+                self._fields_layout.addWidget(text_edit)
+
+                # 百度千帆：添加教程链接
+                if type_id == "baidu":
+                    help_btn = QPushButton("如何获取 curl 命令？")
+                    help_btn.setObjectName("secondary")
+                    help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                    help_btn.setSizePolicy(
+                        QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
+                    )
+                    help_btn.clicked.connect(self._show_baidu_tutorial)
+                    self._fields_layout.addWidget(help_btn)
             else:
                 line_edit = QLineEdit()
                 if field_type == "password":
@@ -198,6 +224,15 @@ class ProviderEditDialog(QDialog):
             self._custom_name.setText(cfg.name)
             self._custom_url.setText(cfg.extra.get("quota_url", ""))
             self._custom_env_key.setText(cfg.extra.get("env_key", ""))
+        elif cfg.type == "baidu":
+            # 百度千帆：显示已配置状态提示，不回填 curl
+            curl_widget = self._fields.get("curl")
+            if curl_widget and isinstance(curl_widget, QTextEdit):
+                has_config = cfg.extra.get("cookie") or cfg.extra.get("csrftoken")
+                if has_config:
+                    curl_widget.setPlaceholderText(
+                        "已有配置。如需更新，粘贴新的 curl 命令覆盖即可。"
+                    )
         else:
             # Fill dynamic fields from extra config
             for name, widget in self._fields.items():
@@ -209,8 +244,47 @@ class ProviderEditDialog(QDialog):
                         idx = widget.findData(val)
                         if idx >= 0:
                             widget.setCurrentIndex(idx)
+                    elif isinstance(widget, QTextEdit):
+                        widget.setText(str(val))
                     else:
                         widget.setText(str(val))
+
+    def _show_baidu_tutorial(self) -> None:
+        """显示百度千帆 curl 获取教程对话框。"""
+        tutorial_text = (
+            "<div style='color:#e0e0e0; font-size:13px; line-height:1.8;'>"
+            "<h3 style='color:#6C63FF;'>获取 curl 命令步骤</h3>"
+            "<p><b style='color:#fff;'>1.</b> 登录 "
+            "<a href='https://console.bce.baidu.com/qianfan/resource/subscribe' "
+            "style='color:#6C63FF;'>百度千帆资源订阅页面</a></p>"
+            "<p><b style='color:#fff;'>2.</b> 按 <b>F12</b> 打开浏览器开发者工具，"
+            "切换到 <b>网络 (Network)</b> 标签页</p>"
+            "<p><b style='color:#fff;'>3.</b> 点击页面中 <b>续费</b> 按钮旁边的 "
+            "<b>刷新按钮</b>（或直接刷新页面）</p>"
+            "<p><b style='color:#fff;'>4.</b> 在网络请求列表中找到名为 "
+            "<b style='color:#FFD700;'>resourceList</b> 的请求</p>"
+            "<p><b style='color:#fff;'>5.</b> 右键点击该请求 → <b>复制</b> → "
+            "<b>复制为 cURL(bash)</b></p>"
+            "<p><b style='color:#fff;'>6.</b> 将复制的内容粘贴到上方的文本框中，"
+            "点击保存即可</p>"
+            "</div>"
+        )
+        dlg = QMessageBox(self)
+        dlg.setWindowTitle("获取 curl 命令教程")
+        dlg.setTextFormat(Qt.TextFormat.RichText)
+        dlg.setText(tutorial_text)
+        dlg.setStyleSheet(
+            "QMessageBox { background: #1e1e2e; }"
+            "QMessageBox QLabel { color: #e0e0e0; min-width: 420px; }"
+            "QPushButton { background: #6C63FF; color: white; border: none; "
+            "border-radius: 6px; padding: 8px 24px; font-size: 13px; }"
+            "QPushButton:hover { background: #5a52e0; }"
+        )
+        # 让链接可点击
+        dlg.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction
+        )
+        dlg.exec()
 
     def _on_save(self) -> None:
         type_id = self._type_combo.currentData()
@@ -235,13 +309,34 @@ class ProviderEditDialog(QDialog):
         else:
             api_key = ""
             extra: dict[str, Any] = {}
-            for name, widget in self._fields.items():
-                if isinstance(widget, QComboBox):
-                    extra[name] = widget.currentData()
-                elif name == "api_key":
-                    api_key = widget.text().strip()
-                else:
-                    extra[name] = widget.text().strip()
+            # 百度千帆特殊处理：解析 curl 文本
+            if type_id == "baidu":
+                curl_widget = self._fields.get("curl")
+                curl_text = ""
+                if curl_widget and isinstance(curl_widget, QTextEdit):
+                    curl_text = curl_widget.toPlainText().strip()
+                if curl_text:
+                    from src.providers.baidu import BaiduQianfanProvider
+
+                    parsed = BaiduQianfanProvider.parse_curl(curl_text)
+                    extra.update(parsed)
+                    if not parsed:
+                        QMessageBox.warning(
+                            self,
+                            "解析失败",
+                            "无法从 curl 命令中提取认证信息，请检查格式是否正确。",
+                        )
+                        return
+            else:
+                for name, widget in self._fields.items():
+                    if isinstance(widget, QComboBox):
+                        extra[name] = widget.currentData()
+                    elif isinstance(widget, QTextEdit):
+                        extra[name] = widget.toPlainText().strip()
+                    elif name == "api_key":
+                        api_key = widget.text().strip()
+                    else:
+                        extra[name] = widget.text().strip()
 
             # Get default name from type
             cls = provider_registry.get_type(type_id)
@@ -432,16 +527,7 @@ class SettingsWindow(QDialog):
             return
         prov = self._config.providers[row]
         dlg = ProviderEditDialog(config=prov, parent=self)
-        dlg._on_type_changed()
-        # Pre-fill after fields are built
-        if prov.type != "custom":
-            for name, widget in dlg._fields.items():
-                val = prov.extra.get(name)
-                if val is None and name == "api_key":
-                    val = prov.api_key
-                if val is not None and isinstance(widget, type(widget)):
-                    if hasattr(widget, "setText"):
-                        widget.setText(str(val))
+        # _prefill() inside _build() already sets type and fills fields
         if dlg.exec() == QDialog.DialogCode.Accepted:
             new_cfg = dlg.get_config()
             if new_cfg:
