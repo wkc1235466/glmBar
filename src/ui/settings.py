@@ -72,6 +72,7 @@ class ProviderEditDialog(QDialog):
             "kimi": "Kimi (月之暗面)",
             "alibaba": "阿里云百炼",
             "openrouter": "OpenRouter",
+            "baidu": "百度千帆",
         }
         for type_id, cls in provider_registry.available_types.items():
             name = type_names.get(type_id, cls.__name__.replace("Provider", ""))
@@ -395,6 +396,7 @@ class SettingsWindow(QDialog):
                 "kimi": "Kimi 月之暗面",
                 "alibaba": "阿里云百炼",
                 "openrouter": "OpenRouter",
+                "baidu": "百度千帆",
                 "custom": "自定义",
             }
             type_item = QTableWidgetItem(type_labels.get(prov.type, prov.type))

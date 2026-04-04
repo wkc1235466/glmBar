@@ -10,6 +10,7 @@ from .minimax import MiniMaxProvider
 from .kimi import KimiProvider
 from .alibaba import AlibabaProvider
 from .openrouter import OpenRouterProvider
+from .baidu import BaiduQianfanProvider
 
 
 class ProviderRegistry:
@@ -25,6 +26,7 @@ class ProviderRegistry:
         self.register_type("kimi", KimiProvider)
         self.register_type("alibaba", AlibabaProvider)
         self.register_type("openrouter", OpenRouterProvider)
+        self.register_type("baidu", BaiduQianfanProvider)
 
     def register_type(self, type_id: str, cls: Type[BaseProvider]) -> None:
         """Register a provider class by type ID."""

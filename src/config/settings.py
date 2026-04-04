@@ -61,6 +61,8 @@ def get_or_create_config() -> AppConfig:
             ProviderConfig(id="kimi", type="kimi", name="Kimi (月之暗面)"),
             ProviderConfig(id="alibaba", type="alibaba", name="阿里云百炼"),
             ProviderConfig(id="openrouter", type="openrouter", name="OpenRouter"),
+            ProviderConfig(id="baidu", type="baidu", name="百度千帆"),
+            ProviderConfig(id="baidu", type="baidu", name="百度千帆"),
         ]
         save_config(config)
     return config

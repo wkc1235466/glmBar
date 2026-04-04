@@ -3,11 +3,12 @@ name = "glmbar"
 version = "0.1.0"
 description = "Desktop widget for monitoring AI coding plan usage"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "pyside6>=6.8",
     "httpx>=0.28",
     "pydantic>=2.10",
+    "rookiepy>=0.5.6",
 ]
 
 [project.scripts]
@@ -15,3 +16,7 @@ glmbar = "src.main:main"
 
 [tool.uv]
 package = false
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple"
+default = true
