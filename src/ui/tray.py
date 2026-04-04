@@ -482,6 +482,9 @@ class UsagePopup(QWidget):
 
     def _toggle_compact(self) -> None:
         """Toggle between compact and expanded mode."""
+        # Pause updates to prevent flickering
+        self.setUpdatesEnabled(False)
+
         self._compact = not self._compact
         if self._compact:
             self._title_label.hide()
@@ -500,6 +503,9 @@ class UsagePopup(QWidget):
             )
             self._layout.setContentsMargins(16, 12, 16, 12)
         self.update_usage(self._usages)
+
+        # Resume updates
+        self.setUpdatesEnabled(True)
         self.show()
         self.raise_()
 
