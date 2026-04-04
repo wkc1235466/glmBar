@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
+  "productName": "GlmBar",
+  "version": "0.1.0",
+  "identifier": "com.glmbar.app",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "popup",
+        "url": "index.html",
+        "width": 420,
+        "height": 400,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "resizable": false
+      },
+      {
+        "label": "settings",
+        "url": "settings.html",
+        "width": 560,
+        "height": 520,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "resizable": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ]
+  }
+}

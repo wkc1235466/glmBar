@@ -1,0 +1,51 @@
+/* === Shared Dark Theme === */
+:root {
+    --bg-primary: #12121e;
+    --bg-card: #1e1e2e;
+    --bg-input: #2a2a3a;
+    --bg-hover: #3a3a4a;
+    --border: #333;
+    --border-light: #444;
+    --text-primary: #e0e0e0;
+    --text-secondary: #ccc;
+    --text-muted: #888;
+    --text-dim: #555;
+    --accent: #6C63FF;
+    --accent-hover: #5a52e0;
+    --success: #4CAF50;
+    --success-hover: #45a049;
+    --warning: #FFC107;
+    --warning-text: #FF9800;
+    --error: #F44336;
+    --error-hover: #e74c3c;
+    --danger: #c0392b;
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none;
+}
+
+body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: transparent;
+    color: var(--text-primary);
+    overflow: hidden;
+}
+
+::-webkit-scrollbar {
+    width: 4px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 2px;
+}

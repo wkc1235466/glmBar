@@ -1,0 +1,12 @@
+{
+  "name": "glmbar-tauri",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "cargo tauri dev",
+    "build": "cargo tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/cli": "^2.10.1"
+  }
+}

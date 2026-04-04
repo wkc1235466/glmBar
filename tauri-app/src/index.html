@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GlmBar</title>
+    <link rel="stylesheet" href="css/popup.css">
+</head>
+<body oncontextmenu="event.preventDefault(); return false;">
+    <div id="app">
+        <div class="title-bar" data-tauri-drag-region>
+            <h1 data-tauri-drag-region>GlmBar - 编程套餐用量</h1>
+        </div>
+        <div class="content">
+            <div class="loading">加载中...</div>
+        </div>
+        <div class="footer">
+            <button id="refresh-btn">刷新</button>
+            <button id="settings-btn">设置</button>
+        </div>
+    </div>
+    <script type="module" src="js/popup.js"></script>
+</body>
+</html>

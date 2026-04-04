@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GlmBar 设置</title>
+    <link rel="stylesheet" href="css/settings.css">
+</head>
+<body>
+    <div id="app">
+        <div class="drag-region" data-tauri-drag-region></div>
+        <div class="settings-content">
+            <h2>通用设置</h2>
+            <div class="general-settings">
+                <label>刷新间隔（秒）：</label>
+                <input type="number" id="refresh-interval" min="10" max="600" step="10">
+            </div>
+
+            <h2>服务商列表</h2>
+            <table class="provider-table">
+                <thead>
+                    <tr>
+                        <th style="width:50px">启用</th>
+                        <th>服务商</th>
+                        <th style="width:120px">类型</th>
+                        <th style="width:120px">API 密钥</th>
+                    </tr>
+                </thead>
+                <tbody id="provider-tbody"></tbody>
+            </table>
+
+            <div class="btn-row">
+                <button id="add-btn">添加服务商</button>
+                <button id="edit-btn" class="secondary">编辑</button>
+                <button id="remove-btn" class="danger">移除</button>
+            </div>
+
+            <div class="footer-row">
+                <button id="close-btn" class="secondary">关闭</button>
+            </div>
+        </div>
+
+        <!-- Provider edit modal -->
+        <div class="modal-overlay" id="modal-overlay">
+            <div class="modal" id="provider-modal">
+                <h3 id="modal-title">添加服务商</h3>
+
+                <div class="modal-field">
+                    <label>服务商类型</label>
+                    <select id="modal-type"></select>
+                </div>
+
+                <div id="modal-fields"></div>
+
+                <div id="modal-custom" class="custom-fields" style="display:none">
+                    <div class="modal-field">
+                        <label>服务商 ID</label>
+                        <input type="text" id="custom-id" placeholder="例如 deepseek">
+                    </div>
+                    <div class="modal-field">
+                        <label>显示名称</label>
+                        <input type="text" id="custom-name" placeholder="例如 DeepSeek">
+                    </div>
+                    <div class="modal-field">
+                        <label>配额查询 URL</label>
+                        <input type="text" id="custom-url" placeholder="https://api.example.com/usage">
+                    </div>
+                </div>
+
+                <div class="modal-buttons">
+                    <button id="modal-cancel" class="secondary">取消</button>
+                    <button id="modal-save">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="js/settings.js"></script>
+</body>
+</html>
