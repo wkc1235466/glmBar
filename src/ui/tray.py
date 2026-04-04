@@ -75,7 +75,7 @@ class UsageBar(QProgressBar):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(8)
+        self.setFixedHeight(10)
         self.setTextVisible(False)
         self.setMinimum(0)
         self.setMaximum(100)
@@ -111,7 +111,7 @@ class ProviderCard(QFrame):
             self.setFrameShape(QFrame.Shape.StyledPanel)
             self.setStyleSheet(
                 "ProviderCard { background: #1e1e2e; border: 1px solid #333; "
-                "border-radius: 8px; padding: 8px; }"
+                "border-radius: 8px; padding: 10px; }"
             )
             self._build(usage)
 
@@ -162,14 +162,14 @@ class ProviderCard(QFrame):
 
     def _build(self, usage: UsageData) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(6)
 
         # Header: name + status
         header = QHBoxLayout()
 
         name_label = QLabel(usage.provider_name)
-        name_label.setStyleSheet("color: #e0e0e0; font-size: 14px; font-weight: bold;")
+        name_label.setStyleSheet("color: #e0e0e0; font-size: 16px; font-weight: bold;")
         header.addWidget(name_label)
 
         header.addStretch()
@@ -180,7 +180,7 @@ class ProviderCard(QFrame):
                 "#888" if usage.status == ProviderStatus.NO_API_KEY else "#FF9800"
             )
             status_label = QLabel(status_text)
-            status_label.setStyleSheet(f"color: {status_color}; font-size: 12px;")
+            status_label.setStyleSheet(f"color: {status_color}; font-size: 13px;")
             header.addWidget(status_label)
 
         layout.addLayout(header)
@@ -188,24 +188,24 @@ class ProviderCard(QFrame):
         # Plan name
         if usage.plan_name:
             plan = QLabel(f"套餐: {usage.plan_name}")
-            plan.setStyleSheet("color: #888; font-size: 11px;")
+            plan.setStyleSheet("color: #888; font-size: 13px;")
             layout.addWidget(plan)
 
         # Error message
         if usage.error_message:
             err = QLabel(usage.error_message)
-            err.setStyleSheet("color: #FF9800; font-size: 11px;")
+            err.setStyleSheet("color: #FF9800; font-size: 13px;")
             err.setWordWrap(True)
             layout.addWidget(err)
 
         # Usage windows
         for w in usage.windows:
             win_layout = QVBoxLayout()
-            win_layout.setSpacing(2)
+            win_layout.setSpacing(3)
 
             info = QHBoxLayout()
             lbl = QLabel(w.label)
-            lbl.setStyleSheet("color: #aaa; font-size: 11px;")
+            lbl.setStyleSheet("color: #aaa; font-size: 13px;")
             info.addWidget(lbl)
 
             info.addStretch()
@@ -225,7 +225,7 @@ class ProviderCard(QFrame):
                 else "#F44336"
             )
             detail = QLabel("  ".join(detail_parts))
-            detail.setStyleSheet(f"color: {pct_color}; font-size: 11px; font-weight: bold;")
+            detail.setStyleSheet(f"color: {pct_color}; font-size: 13px; font-weight: bold;")
             info.addWidget(detail)
 
             win_layout.addLayout(info)
@@ -239,13 +239,13 @@ class ProviderCard(QFrame):
         # Balance (for credit-based providers)
         if usage.balance is not None:
             bal = QLabel(f"余额: ${usage.balance:.2f}")
-            bal.setStyleSheet("color: #4CAF50; font-size: 11px;")
+            bal.setStyleSheet("color: #4CAF50; font-size: 13px;")
             layout.addWidget(bal)
 
         # Updated time
         time_str = usage.updated_at.strftime("%H:%M:%S")
         updated = QLabel(f"更新时间: {time_str}")
-        updated.setStyleSheet("color: #555; font-size: 10px;")
+        updated.setStyleSheet("color: #555; font-size: 12px;")
         layout.addWidget(updated)
 
 
@@ -302,7 +302,7 @@ class UsagePopup(QWidget):
         # Title bar area — visual only, dragging handled via event filter
         self._title_label = QLabel("GlmBar - 编程套餐用量")
         self._title_label.setStyleSheet(
-            "color: #e0e0e0; font-size: 16px; font-weight: bold; padding: 4px 0;"
+            "color: #e0e0e0; font-size: 18px; font-weight: bold; padding: 4px 0;"
         )
         self._layout.addWidget(self._title_label)
 
@@ -583,18 +583,19 @@ class UsagePopup(QWidget):
 
     def _apply_window_size(self) -> None:
         """Apply the correct window size based on current mode."""
-        # 1. Lift old setFixedSize constraints so content can expand freely
         self.setMinimumSize(0, 0)
         self.setMaximumSize(16777215, 16777215)
-
-        # 2. Force the INNER layout to recalculate, then adjust container
-        self._layout.invalidate()
         self._container.updateGeometry()
-        self._container.adjustSize()
 
-        # 3. Container's actual size now reflects the visible content
-        size = self._container.size()
-        self.setFixedSize(size.width() + 2, size.height() + 2)
+        if self._compact:
+            # Compact mode: shrink to fit content
+            self._container.adjustSize()
+            size = self._container.size()
+            self.setFixedSize(size.width() + 2, size.height() + 2)
+        else:
+            # Expanded mode: fixed width, auto height
+            self.setFixedWidth(420)
+            self.adjustSize()
 
     def _toggle_compact(self) -> None:
         """Toggle between compact and expanded mode.
