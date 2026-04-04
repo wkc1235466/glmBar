@@ -282,7 +282,8 @@ class UsagePopup(QWidget):
         self._usages: list[UsageData] = []
         self._cards: list[ProviderCard] = []
         self._guide_frame: QFrame | None = None
-        self._dblclick_from_button = False
+        self._last_right_click_time: int = 0
+        self._last_right_click_pos: QPoint = QPoint()
 
         self._container = QFrame(self)
         self._container.setStyleSheet(
@@ -361,31 +362,59 @@ class UsagePopup(QWidget):
         for child in widget.findChildren(QWidget):
             child.installEventFilter(self)
 
+    def _handle_right_click(self, event) -> bool:
+        """Detect right double-click manually via press timing.
+
+        Returns True if a double-right-click was detected (and toggle fired).
+        """
+        import time
+
+        now = int(time.monotonic() * 1000)
+        pos = event.globalPosition().toPoint()
+        interval = QApplication.doubleClickInterval()
+
+        if (
+            now - self._last_right_click_time < interval
+            and (pos - self._last_right_click_pos).manhattanLength() < 8
+        ):
+            self._toggle_compact()
+            self._last_right_click_time = 0
+            return True
+
+        self._last_right_click_time = now
+        self._last_right_click_pos = pos
+        return False
+
     def eventFilter(self, obj, event) -> bool:
-        """Forward drag and double-click from children to this window."""
+        """Forward drag (left) and double-click (right) from children to this window."""
         from PySide6.QtCore import QEvent
 
+        # Right double-click: catch Qt's built-in DblClick (same-widget) ...
         if event.type() == QEvent.Type.MouseButtonDblClick:
-            if event.button() == Qt.MouseButton.LeftButton:
-                self._dblclick_from_button = isinstance(obj, QPushButton)
-                self.mouseDoubleClickEvent(event)
+            if event.button() == Qt.MouseButton.RightButton:
+                self._last_right_click_time = 0  # prevent manual re-trigger
+                self._toggle_compact()
                 return True
 
-        if event.type() in (
-            QEvent.Type.MouseButtonPress,
-            QEvent.Type.MouseMove,
-            QEvent.Type.MouseButtonRelease,
-        ):
-            if event.button() == Qt.MouseButton.LeftButton or (
-                hasattr(event, "buttons") and event.buttons() & Qt.MouseButton.LeftButton
-            ):
-                if event.type() == QEvent.Type.MouseButtonPress:
-                    self.mousePressEvent(event)
-                elif event.type() == QEvent.Type.MouseMove:
-                    self.mouseMoveEvent(event)
-                elif event.type() == QEvent.Type.MouseButtonRelease:
-                    self.mouseReleaseEvent(event)
+        # ... and also track Press for cross-widget manual detection
+        if event.type() == QEvent.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.RightButton:
+                self._handle_right_click(event)
+                return True  # consume right-clicks to prevent context menu
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.mousePressEvent(event)
                 return False
+
+        if event.type() == QEvent.Type.MouseMove:
+            if hasattr(event, "buttons") and event.buttons() & Qt.MouseButton.LeftButton:
+                self.mouseMoveEvent(event)
+                return False
+
+        if event.type() == QEvent.Type.MouseButtonRelease:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.mouseReleaseEvent(event)
+                return False
+
         return super().eventFilter(obj, event)
 
     @staticmethod
@@ -554,30 +583,25 @@ class UsagePopup(QWidget):
 
     def _apply_window_size(self) -> None:
         """Apply the correct window size based on current mode."""
-        # Lift old fixed-size constraints so layout can recalculate freely
+        # 1. Lift old setFixedSize constraints so content can expand freely
         self.setMinimumSize(0, 0)
         self.setMaximumSize(16777215, 16777215)
 
-        # Force layout recalculation, then read the popup's own sizeHint
-        # which already includes title, footer, margins, and the visible page.
+        # 2. Force the INNER layout to recalculate, then adjust container
+        self._layout.invalidate()
         self._container.updateGeometry()
-        self.layout().activate()
-        hint = self.sizeHint()
+        self._container.adjustSize()
 
-        if self._compact:
-            self.setFixedSize(hint.width(), hint.height())
-        else:
-            self.setFixedSize(380, hint.height())
+        # 3. Container's actual size now reflects the visible content
+        size = self._container.size()
+        self.setFixedSize(size.width() + 2, size.height() + 2)
 
     def _toggle_compact(self) -> None:
         """Toggle between compact and expanded mode.
 
         Only switches page visibility — no widget creation or destruction.
+        No hide/show/move tricks needed because we never destroy widgets.
         """
-        pos = self.pos()
-        self.move(-10000, -10000)
-        self.setUpdatesEnabled(False)
-
         self._compact = not self._compact
         if self._compact:
             self._title_label.hide()
@@ -602,9 +626,6 @@ class UsagePopup(QWidget):
 
         self._apply_window_size()
 
-        self.move(pos)
-        self.setUpdatesEnabled(True)
-
     def _on_refresh(self) -> None:
         """Emit refresh signal (TrayIcon connects to this)."""
         self.refresh_requested.emit()
@@ -622,7 +643,10 @@ class UsagePopup(QWidget):
         self.raise_()
 
     def mousePressEvent(self, event) -> None:
-        """Start potential drag."""
+        """Handle right double-click detection and start potential left-drag."""
+        if event.button() == Qt.MouseButton.RightButton:
+            self._handle_right_click(event)
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start = event.globalPosition().toPoint()
             self._drag_pos = event.globalPosition().toPoint() - self.pos()
@@ -648,8 +672,9 @@ class UsagePopup(QWidget):
         super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event) -> None:
-        """Double-click toggles between compact and expanded mode."""
-        if not self._dblclick_from_button:
+        """Right-double-click toggles between compact and expanded mode."""
+        if event.button() == Qt.MouseButton.RightButton:
+            self._last_right_click_time = 0  # prevent manual re-trigger
             self._toggle_compact()
         super().mouseDoubleClickEvent(event)
 
