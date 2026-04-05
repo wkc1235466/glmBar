@@ -1,11 +1,18 @@
 // Popup panel logic — matches Python/PySide6 version
-const { invoke } = window.__TAURI__.core;
-const { listen } = window.__TAURI__.event;
+// Uses window.__TAURI__ directly (withGlobalTauri), no import
 
 let compact = false;
 let lastRightClickTime = 0;
 let lastRightClickX = 0;
 let lastRightClickY = 0;
+
+// Safe access to Tauri APIs
+function tauriInvoke(cmd, args) {
+    return window.__TAURI__.core.invoke(cmd, args);
+}
+function tauriListen(event, handler) {
+    return window.__TAURI__.event.listen(event, handler);
+}
 
 const app = document.getElementById('app');
 const titleBar = document.querySelector('.title-bar');
@@ -14,32 +21,37 @@ const footerEl = document.querySelector('.footer');
 const refreshBtn = document.getElementById('refresh-btn');
 const settingsBtn = document.getElementById('settings-btn');
 
-// Initialize
+// ─── Init ───
 async function init() {
     try {
-        const config = await invoke('get_config');
+        const config = await tauriInvoke('get_config');
         compact = config.compact_mode || false;
     } catch (e) {
-        console.error('Failed to get config:', e);
+        console.error('get_config failed:', e);
     }
 
     if (compact) applyCompactMode();
     await refreshUsage();
 
-    listen('usage-updated', (event) => renderUsage(event.payload));
-    listen('trigger-refresh', async () => { await refreshUsage(); });
+    tauriListen('usage-updated', function(event) {
+        renderUsage(event.payload);
+    });
+    tauriListen('trigger-refresh', async function() {
+        await refreshUsage();
+    });
 }
 
 async function refreshUsage() {
     try {
-        const usages = await invoke('fetch_all_usage');
+        const usages = await tauriInvoke('fetch_all_usage');
         renderUsage(usages);
     } catch (e) {
-        console.error('Failed to fetch usage:', e);
+        console.error('fetch_all_usage failed:', e);
         contentEl.innerHTML = '<div class="loading">加载失败</div>';
     }
 }
 
+// ─── Helpers ───
 function pctColor(pct) {
     if (pct < 50) return '#4CAF50';
     if (pct < 80) return '#FFC107';
@@ -68,12 +80,12 @@ function formatResetTime(resetsAt) {
         if (diff <= 0) return '';
         const h = Math.floor(diff / 3600000);
         const m = Math.floor((diff % 3600000) / 60000);
-        return `${h}时${m}分后重置`;
+        return h + '时' + m + '分后重置';
     } catch { return ''; }
 }
 
 function esc(text) {
-    const d = document.createElement('div');
+    var d = document.createElement('div');
     d.textContent = text;
     return d.innerHTML;
 }
@@ -85,29 +97,29 @@ function renderUsage(usages) {
         return;
     }
 
-    const active = usages.filter(u => u.status !== 'no_api_key');
+    var active = usages.filter(function(u) { return u.status !== 'no_api_key'; });
 
     if (active.length === 0) {
-        contentEl.innerHTML = `
-            <div class="setup-guide">
-                <p>请先在设置中配置您的 API 密钥</p>
-                <button class="guide-btn" id="guide-settings-btn">打开设置</button>
-            </div>`;
-        document.getElementById('guide-settings-btn').addEventListener('click', openSettings);
+        contentEl.innerHTML =
+            '<div class="setup-guide">' +
+            '<p>请先在设置中配置您的 API 密钥</p>' +
+            '<button class="guide-btn" id="guide-settings-btn">打开设置</button>' +
+            '</div>';
+        document.getElementById('guide-settings-btn').onclick = openSettings;
         resizeToFit();
         return;
     }
 
     // Expanded HTML
-    let exp = '';
-    for (const u of active) {
-        exp += renderExpandedCard(u);
+    var exp = '';
+    for (var i = 0; i < active.length; i++) {
+        exp += renderExpandedCard(active[i]);
     }
 
-    // Compact HTML (single-line per provider, like Python version)
-    let cmp = '';
-    for (const u of active) {
-        cmp += renderCompactLine(u);
+    // Compact HTML — two-column layout matching Python UsagePopup._build_compact_page()
+    var cmp = '';
+    for (var j = 0; j < active.length; j++) {
+        cmp += renderCompactRow(active[j]);
     }
 
     contentEl.dataset.expanded = exp;
@@ -116,120 +128,128 @@ function renderUsage(usages) {
     resizeToFit();
 }
 
-// Expanded card — matches Python ProviderCard._build()
+// ─── Expanded Card (matches Python ProviderCard._build) ───
 function renderExpandedCard(u) {
-    let h = '<div class="provider-card">';
+    var h = '<div class="provider-card">';
 
     // Header
     h += '<div class="card-header">';
-    h += `<span class="provider-name">${esc(u.provider_name)}</span>`;
+    h += '<span class="provider-name">' + esc(u.provider_name) + '</span>';
     if (u.status !== 'ok') {
-        const txt = u.status === 'error' ? '错误'
+        var txt = u.status === 'error' ? '错误'
             : u.status === 'unauthorized' ? '未授权'
             : u.status === 'no_api_key' ? '未设置密钥' : '';
-        h += `<span class="status-badge status-${u.status}">${txt}</span>`;
+        h += '<span class="status-badge">' + txt + '</span>';
     }
     h += '</div>';
 
-    // Plan
-    if (u.plan_name) h += `<div class="plan-name">套餐: ${esc(u.plan_name)}</div>`;
-    if (u.error_message) h += `<div class="error-msg">${esc(u.error_message)}</div>`;
+    if (u.plan_name) h += '<div class="plan-name">套餐: ' + esc(u.plan_name) + '</div>';
+    if (u.error_message) h += '<div class="error-msg">' + esc(u.error_message) + '</div>';
 
-    // Windows with progress bars
-    for (const w of u.windows) {
-        const c = pctColor(w.used_percent);
-        const reset = formatResetTime(w.resets_at);
-        const detail = [`${w.used_percent.toFixed(0)}%`];
+    for (var i = 0; i < u.windows.length; i++) {
+        var w = u.windows[i];
+        var c = pctColor(w.used_percent);
+        var reset = formatResetTime(w.resets_at);
+        var detail = [w.used_percent.toFixed(0) + '%'];
         if (reset) detail.push(reset);
 
         h += '<div class="usage-window">';
         h += '<div class="usage-header">';
-        h += `<span class="usage-label">${esc(w.label)}</span>`;
-        h += `<span class="usage-detail" style="color:${c}">${detail.join('  ')}</span>`;
+        h += '<span class="usage-label">' + esc(w.label) + '</span>';
+        h += '<span class="usage-detail" style="color:' + c + '">' + detail.join('  ') + '</span>';
         h += '</div>';
-        h += `<div class="progress-bar"><div class="progress-fill" style="width:${Math.min(w.used_percent, 100)}%;background:${c}"></div></div>`;
+        h += '<div class="progress-bar"><div class="progress-fill" style="width:' +
+            Math.min(w.used_percent, 100) + '%;background:' + c + '"></div></div>';
         h += '</div>';
     }
 
-    if (u.balance != null) h += `<div class="balance">余额: $${u.balance.toFixed(2)}</div>`;
+    if (u.balance != null) h += '<div class="balance">余额: $' + u.balance.toFixed(2) + '</div>';
 
-    const t = u.updated_at || new Date().toLocaleTimeString('zh-CN');
-    h += `<div class="updated-at">更新: ${esc(t)}</div>`;
+    var t = u.updated_at || '';
+    h += '<div class="updated-at">更新: ' + esc(t) + '</div>';
     h += '</div>';
     return h;
 }
 
-// Compact line — matches Python ProviderCard._build_compact()
-// Single line: "智谱：Token 45% | 每周 32% $0.50"
-function renderCompactLine(u) {
-    const name = shortName(u.provider_name);
-    const parts = [`<span style="color:#e0e0e0;font-weight:bold">${esc(name)}：</span>`];
+// ─── Compact Row (matches Python UsagePopup._build_compact_page)
+// Layout: [name box 65px] [quota rows with label + bar + pct]
+function renderCompactRow(u) {
+    var name = shortName(u.provider_name);
+
+    var h = '<div class="compact-row">';
+    // Left: name box
+    h += '<div class="compact-name"><span>' + esc(name) + '</span></div>';
+    // Right: quotas
+    h += '<div class="compact-quotas">';
 
     if (u.windows.length === 0) {
-        if (u.status === 'error') parts.push('<span style="color:#F44336">错误</span>');
-        else if (u.status === 'unauthorized') parts.push('<span style="color:#FF9800">未授权</span>');
-        else parts.push('<span style="color:#888">无数据</span>');
+        var errText = u.status === 'ok' ? '无数据' : u.status === 'error' ? '错误' : '未授权';
+        var errColor = u.status === 'ok' ? '#888' : u.status === 'error' ? '#F44336' : '#FF9800';
+        h += '<span class="compact-error" style="color:' + errColor + '">' + errText + '</span>';
     } else {
-        for (let i = 0; i < u.windows.length; i++) {
-            if (i > 0) parts.push('<span style="color:#555"> | </span>');
-            const w = u.windows[i];
-            const c = pctColor(w.used_percent);
-            const label = shortLabel(w.label);
-            parts.push(`<span style="color:${c};font-weight:bold">${label} ${w.used_percent.toFixed(0)}%</span>`);
+        for (var i = 0; i < u.windows.length; i++) {
+            var w = u.windows[i];
+            var c = pctColor(w.used_percent);
+            var label = shortLabel(w.label);
+            h += '<div class="quota-row">';
+            h += '<span class="quota-label">' + esc(label) + '</span>';
+            h += '<div class="quota-bar"><div class="progress-fill" style="width:' +
+                Math.min(w.used_percent, 100) + '%;background:' + c + '"></div></div>';
+            h += '<span class="quota-pct" style="color:' + c + '">' + w.used_percent.toFixed(0) + '%</span>';
+            h += '</div>';
         }
     }
 
     if (u.balance != null) {
-        parts.push(`<span style="color:#4CAF50"> $${u.balance.toFixed(2)}</span>`);
+        h += '<span style="color:#4CAF50;font-size:11px">$' + u.balance.toFixed(2) + '</span>';
     }
 
-    return `<div class="compact-line">${parts.join('')}</div>`;
+    h += '</div></div>';
+    return h;
 }
 
-// ─── Resize ───
-async function resizeToFit() {
-    await new Promise(r => requestAnimationFrame(r));
-    await new Promise(r => requestAnimationFrame(r));
+// ─── Resize window to fit content ───
+function resizeToFit() {
+    requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+            var rect = app.getBoundingClientRect();
+            var width = compact ? 300 : 420;
+            var height = Math.ceil(rect.height) + 4;
+            height = Math.max(height, 60);
+            height = Math.min(height, 800);
 
-    const rect = app.getBoundingClientRect();
-    const width = compact ? 380 : 420;
-    let height = Math.ceil(rect.height) + 4;
-    height = Math.max(height, 60);
-    height = Math.min(height, 800);
+            var win = window.__TAURI__.window.getCurrentWindow();
+            var mod = window.__TAURI__.dpi || window.__TAURI__.window;
 
-    try {
-        const win = window.__TAURI__.window.getCurrentWindow();
-        const mod = window.__TAURI__.dpi || window.__TAURI__.window;
+            var sizeObj = mod.LogicalSize
+                ? new mod.LogicalSize(width, height)
+                : { type: 'Logical', width: width, height: height };
 
-        if (mod.LogicalSize) {
-            await win.setSize(new mod.LogicalSize(width, height));
-        } else {
-            await win.setSize({ type: 'Logical', width, height });
-        }
-
-        const monitor = await win.primaryMonitor();
-        if (monitor) {
-            const sW = monitor.size.width / monitor.scaleFactor;
-            const sH = monitor.size.height / monitor.scaleFactor;
-            const x = Math.round(sW - width - 16);
-            const y = Math.round(sH - height - 60);
-            const pos = mod.LogicalPosition
-                ? new mod.LogicalPosition(Math.max(x, 0), Math.max(y, 0))
-                : { type: 'Logical', x: Math.max(x, 0), y: Math.max(y, 0) };
-            await win.setPosition(pos);
-        }
-    } catch (e) {
-        console.error('resize failed:', e);
-    }
+            win.setSize(sizeObj).then(function() {
+                return win.primaryMonitor();
+            }).then(function(monitor) {
+                if (monitor) {
+                    var sW = monitor.size.width / monitor.scaleFactor;
+                    var sH = monitor.size.height / monitor.scaleFactor;
+                    var x = Math.round(sW - width - 16);
+                    var y = Math.round(sH - height - 60);
+                    var posObj = mod.LogicalPosition
+                        ? new mod.LogicalPosition(Math.max(x, 0), Math.max(y, 0))
+                        : { type: 'Logical', x: Math.max(x, 0), y: Math.max(y, 0) };
+                    return win.setPosition(posObj);
+                }
+            }).catch(function(e) {
+                console.error('resize failed:', e);
+            });
+        });
+    });
 }
 
 // ─── Toggle ───
 function toggleCompact() {
     compact = !compact;
     applyCompactMode();
-    const exp = contentEl.dataset.expanded;
-    const cmp = contentEl.dataset.compact;
-    contentEl.innerHTML = compact ? cmp : exp;
+    contentEl.innerHTML = compact ? contentEl.dataset.compact : contentEl.dataset.expanded;
     resizeToFit();
 }
 
@@ -248,9 +268,9 @@ function applyCompactMode() {
 // ─── Events ───
 
 // Right-click double → toggle mode
-document.addEventListener('contextmenu', (e) => {
+document.addEventListener('contextmenu', function(e) {
     e.preventDefault();
-    const now = Date.now();
+    var now = Date.now();
     if (now - lastRightClickTime < 500
         && Math.abs(e.clientX - lastRightClickX) < 8
         && Math.abs(e.clientY - lastRightClickY) < 8) {
@@ -264,49 +284,47 @@ document.addEventListener('contextmenu', (e) => {
 });
 
 // Escape → hide
-document.addEventListener('keydown', (e) => {
+document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         window.__TAURI__.window.getCurrentWindow().hide();
     }
 });
 
-// ─── Buttons (expanded mode footer) ───
-refreshBtn.addEventListener('click', () => {
+// ─── Button handlers ───
+refreshBtn.onclick = function() {
     refreshUsage();
-});
+};
 
-settingsBtn.addEventListener('click', () => {
+settingsBtn.onclick = function() {
     openSettings();
-});
+};
 
 // ─── Drag ───
-titleBar.addEventListener('mousedown', (e) => {
+titleBar.addEventListener('mousedown', function(e) {
     if (e.button === 0) {
         window.__TAURI__.window.getCurrentWindow().startDragging();
     }
 });
 
-// In compact mode, the whole panel is draggable
-app.addEventListener('mousedown', (e) => {
+app.addEventListener('mousedown', function(e) {
     if (compact && e.button === 0) {
         window.__TAURI__.window.getCurrentWindow().startDragging();
     }
 });
 
-async function openSettings() {
+function openSettings() {
     try {
-        const { WebviewWindow } = window.__TAURI__.webviewWindow;
-        const w = WebviewWindow.getByLabel('settings');
+        var W = window.__TAURI__.webviewWindow.WebviewWindow;
+        var w = W.getByLabel('settings');
         if (w) {
-            await w.show();
-            await w.setFocus();
+            w.show();
+            w.setFocus();
         }
     } catch (e) {
-        console.error('openSettings failed:', e);
+        console.error('openSettings error:', e);
     }
 }
 
-// Expose for inline handlers
 window.openSettings = openSettings;
 
 // Start
