@@ -214,7 +214,7 @@ function resizeToFit() {
         requestAnimationFrame(function() {
             var rect = app.getBoundingClientRect();
             var width = Math.ceil(rect.width);
-            var height = Math.ceil(rect.height) + 2;
+            var height = Math.ceil(rect.height);
             width = Math.max(width, 100);
             height = Math.max(height, 60);
             height = Math.min(height, 800);

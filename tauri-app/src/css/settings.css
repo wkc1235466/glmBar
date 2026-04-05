@@ -9,7 +9,6 @@ body {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
-    height: 100vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -24,9 +23,8 @@ body {
 
 /* Content */
 .settings-content {
-    flex: 1;
     overflow-y: auto;
-    padding: 0 24px 24px;
+    padding: 0 24px 10px;
 }
 
 /* Section headers */
@@ -65,34 +63,27 @@ h2 {
     border-color: var(--accent);
 }
 
-/* Provider table */
+/* Provider table — 三线表 */
 .provider-table {
     width: 100%;
     border-collapse: collapse;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
     margin-bottom: 12px;
+    border-top: 2px solid var(--text-secondary);
+    border-bottom: 2px solid var(--text-secondary);
 }
 
 .provider-table th {
-    background: #252535;
     color: var(--text-secondary);
     padding: 8px 12px;
     text-align: left;
     font-weight: bold;
     font-size: 13px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--text-secondary);
 }
 
 .provider-table td {
     padding: 8px 12px;
-    border-bottom: 1px solid var(--border);
     font-size: 13px;
-}
-
-.provider-table tr:last-child td {
-    border-bottom: none;
 }
 
 .provider-table tr:hover td {
@@ -109,8 +100,14 @@ h2 {
 /* Buttons */
 .btn-row {
     display: flex;
-    gap: 8px;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 16px;
+}
+
+.btn-left {
+    display: flex;
+    gap: 8px;
 }
 
 button {
@@ -142,13 +139,6 @@ button.danger {
 
 button.danger:hover {
     background: var(--error);
-}
-
-.footer-row {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: auto;
-    padding-top: 12px;
 }
 
 /* Modal overlay */
