@@ -9,6 +9,7 @@ body {
     background: var(--bg-primary);
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
+    width: 420px;
     min-height: 100px;
     overflow: hidden;
 }
@@ -186,6 +187,7 @@ body {
 
 .compact #app {
     border-radius: 6px;
+    width: fit-content;
 }
 
 .compact .content {

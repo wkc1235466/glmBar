@@ -150,13 +150,13 @@ function renderExpandedCard(u) {
         var w = u.windows[i];
         var c = pctColor(w.used_percent);
         var reset = formatResetTime(w.resets_at);
-        var detail = [w.used_percent.toFixed(0) + '%'];
-        if (reset) detail.push(reset);
+        var detail = w.used_percent.toFixed(0) + '%';
+        if (reset) detail += ' (' + reset + ')';
 
         h += '<div class="usage-window">';
         h += '<div class="usage-header">';
         h += '<span class="usage-label">' + esc(w.label) + '</span>';
-        h += '<span class="usage-detail" style="color:' + c + '">' + detail.join('  ') + '</span>';
+        h += '<span class="usage-detail" style="color:' + c + '">' + detail + '</span>';
         h += '</div>';
         h += '<div class="progress-bar"><div class="progress-fill" style="width:' +
             Math.min(w.used_percent, 100) + '%;background:' + c + '"></div></div>';
@@ -213,8 +213,9 @@ function resizeToFit() {
     requestAnimationFrame(function() {
         requestAnimationFrame(function() {
             var rect = app.getBoundingClientRect();
-            var width = compact ? 300 : 420;
-            var height = Math.ceil(rect.height) + 4;
+            var width = Math.ceil(rect.width);
+            var height = Math.ceil(rect.height) + 2;
+            width = Math.max(width, 100);
             height = Math.max(height, 60);
             height = Math.min(height, 800);
 
@@ -313,16 +314,9 @@ app.addEventListener('mousedown', function(e) {
 });
 
 function openSettings() {
-    try {
-        var W = window.__TAURI__.webviewWindow.WebviewWindow;
-        var w = W.getByLabel('settings');
-        if (w) {
-            w.show();
-            w.setFocus();
-        }
-    } catch (e) {
+    tauriInvoke('show_settings_window').catch(function(e) {
         console.error('openSettings error:', e);
-    }
+    });
 }
 
 window.openSettings = openSettings;

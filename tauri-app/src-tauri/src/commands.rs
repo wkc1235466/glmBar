@@ -4,7 +4,7 @@ use crate::curl_parser;
 use crate::providers;
 use crate::providers::models::UsageData;
 use std::collections::HashMap;
-use tauri::State;
+use tauri::{Manager, State};
 
 pub struct AppState {
     pub config: tokio::sync::Mutex<AppConfig>,
@@ -77,4 +77,13 @@ pub fn get_available_provider_types() -> Result<Vec<(String, String)>, String> {
 #[tauri::command]
 pub fn get_provider_fields(provider_type: String) -> Result<Vec<(String, String)>, String> {
     Ok(providers::get_display_config(&provider_type))
+}
+
+#[tauri::command]
+pub async fn show_settings_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("settings") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }

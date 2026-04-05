@@ -25,6 +25,7 @@ fn main() {
             glmbar_lib::commands::parse_curl_command,
             glmbar_lib::commands::get_available_provider_types,
             glmbar_lib::commands::get_provider_fields,
+            glmbar_lib::commands::show_settings_window,
         ])
         .setup(|app| {
             // Build tray menu
@@ -49,7 +50,10 @@ fn main() {
                             let _ = app.emit("trigger-refresh", ());
                         }
                         "settings" => {
-                            show_settings_window(app);
+                            if let Some(window) = app.get_webview_window("settings") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
                         }
                         "quit" => {
                             std::process::exit(0);
@@ -194,13 +198,6 @@ fn toggle_popup_window(app: &tauri::AppHandle) {
             // Trigger refresh
             let _ = app.emit("trigger-refresh", ());
         }
-    }
-}
-
-fn show_settings_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("settings") {
-        let _ = window.show();
-        let _ = window.set_focus();
     }
 }
 
