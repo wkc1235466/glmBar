@@ -1,30 +1,32 @@
 use crate::providers::models::*;
 use crate::providers::Provider;
-use async_trait::async_trait;
+use std::future::Future;
+use std::pin::Pin;
 
 pub struct KimiProvider {
+    client: reqwest::Client,
     api_key: String,
 }
 
 impl KimiProvider {
-    pub fn new(api_key: &str) -> Self {
+    pub fn new(client: reqwest::Client, api_key: &str) -> Self {
         Self {
+            client,
             api_key: api_key.to_string(),
         }
     }
 }
 
-#[async_trait]
 impl Provider for KimiProvider {
-    async fn fetch_usage(&self) -> UsageData {
+    fn fetch_usage(&self) -> Pin<Box<dyn Future<Output = UsageData> + Send + '_>> {
+        Box::pin(async move {
         if self.api_key.is_empty() {
             return UsageData::no_api_key("kimi", "Kimi (月之暗面)");
         }
 
         let url = "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages";
-        let client = reqwest::Client::new();
 
-        let resp = match client
+        let resp = match self.client
             .post(url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
@@ -156,5 +158,6 @@ impl Provider for KimiProvider {
             },
             updated_at: UsageData::now_timestamp(),
         }
+        })
     }
 }

@@ -1,15 +1,18 @@
 use crate::providers::models::*;
 use crate::providers::Provider;
-use async_trait::async_trait;
+use std::future::Future;
+use std::pin::Pin;
 
 pub struct ZaiProvider {
+    client: reqwest::Client,
     api_key: String,
     region: String,
 }
 
 impl ZaiProvider {
-    pub fn new(api_key: &str, region: Option<&str>) -> Self {
+    pub fn new(client: reqwest::Client, api_key: &str, region: Option<&str>) -> Self {
         Self {
+            client,
             api_key: api_key.to_string(),
             region: region.unwrap_or("china").to_string(),
         }
@@ -25,17 +28,16 @@ impl ZaiProvider {
     }
 }
 
-#[async_trait]
 impl Provider for ZaiProvider {
-    async fn fetch_usage(&self) -> UsageData {
+    fn fetch_usage(&self) -> Pin<Box<dyn Future<Output = UsageData> + Send + '_>> {
+        Box::pin(async move {
         if self.api_key.is_empty() {
             return UsageData::no_api_key("zai", "Z.ai (智谱)");
         }
 
         let url = format!("{}/api/monitor/usage/quota/limit", self.base_url());
-        let client = reqwest::Client::new();
 
-        let resp = match client
+        let resp = match self.client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Accept", "application/json")
@@ -151,5 +153,6 @@ impl Provider for ZaiProvider {
             },
             updated_at: UsageData::now_timestamp(),
         }
+        })
     }
 }

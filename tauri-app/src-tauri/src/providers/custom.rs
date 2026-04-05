@@ -1,8 +1,10 @@
 use crate::providers::models::*;
 use crate::providers::Provider;
-use async_trait::async_trait;
+use std::future::Future;
+use std::pin::Pin;
 
 pub struct CustomProvider {
+    client: reqwest::Client,
     provider_id: String,
     name: String,
     api_key: String,
@@ -10,8 +12,9 @@ pub struct CustomProvider {
 }
 
 impl CustomProvider {
-    pub fn new(id: &str, name: &str, api_key: &str, quota_url: Option<&str>) -> Self {
+    pub fn new(client: reqwest::Client, id: &str, name: &str, api_key: &str, quota_url: Option<&str>) -> Self {
         Self {
+            client,
             provider_id: id.to_string(),
             name: name.to_string(),
             api_key: api_key.to_string(),
@@ -20,9 +23,9 @@ impl CustomProvider {
     }
 }
 
-#[async_trait]
 impl Provider for CustomProvider {
-    async fn fetch_usage(&self) -> UsageData {
+    fn fetch_usage(&self) -> Pin<Box<dyn Future<Output = UsageData> + Send + '_>> {
+        Box::pin(async move {
         if self.api_key.is_empty() {
             return UsageData::no_api_key(&self.provider_id, &self.name);
         }
@@ -31,8 +34,7 @@ impl Provider for CustomProvider {
             return UsageData::error(&self.provider_id, &self.name, "未配置配额查询 URL");
         }
 
-        let client = reqwest::Client::new();
-        let resp = match client
+        let resp = match self.client
             .get(&self.quota_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Accept", "application/json")
@@ -133,5 +135,6 @@ impl Provider for CustomProvider {
             },
             updated_at: UsageData::now_timestamp(),
         }
+        })
     }
 }

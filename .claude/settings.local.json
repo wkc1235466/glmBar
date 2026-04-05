@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(find:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(git log:*)",
+      "Bash(tasklist:*)",
+      "Bash(taskkill:*)",
+      "Bash(ls:*)",
+      "Bash(du:*)",
+      "Bash(cd:)"
     ]
   }
 }

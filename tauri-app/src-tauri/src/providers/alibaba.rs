@@ -1,15 +1,18 @@
 use crate::providers::models::*;
 use crate::providers::Provider;
-use async_trait::async_trait;
+use std::future::Future;
+use std::pin::Pin;
 
 pub struct AlibabaProvider {
+    client: reqwest::Client,
     api_key: String,
     region: String,
 }
 
 impl AlibabaProvider {
-    pub fn new(api_key: &str, region: Option<&str>) -> Self {
+    pub fn new(client: reqwest::Client, api_key: &str, region: Option<&str>) -> Self {
         Self {
+            client,
             api_key: api_key.to_string(),
             region: region.unwrap_or("china").to_string(),
         }
@@ -159,17 +162,16 @@ impl AlibabaProvider {
     }
 }
 
-#[async_trait]
 impl Provider for AlibabaProvider {
-    async fn fetch_usage(&self) -> UsageData {
+    fn fetch_usage(&self) -> Pin<Box<dyn Future<Output = UsageData> + Send + '_>> {
+        Box::pin(async move {
         if self.api_key.is_empty() {
             return UsageData::no_api_key("alibaba", "阿里云百炼");
         }
 
         let url = Self::build_url(&self.base_url());
-        let client = reqwest::Client::new();
 
-        let resp = match client
+        let resp = match self.client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("x-api-key", &self.api_key)
@@ -188,7 +190,7 @@ impl Provider for AlibabaProvider {
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
             // Try fallback region
             let fallback_url = Self::build_url(&self.fallback_url());
-            let resp2 = match client
+            let resp2 = match self.client
                 .post(&fallback_url)
                 .header("Authorization", format!("Bearer {}", self.api_key))
                 .header("x-api-key", &self.api_key)
@@ -245,5 +247,6 @@ impl Provider for AlibabaProvider {
         }
 
         self.parse_response(&data)
+        })
     }
 }

@@ -1,31 +1,33 @@
 use crate::providers::models::*;
 use crate::providers::Provider;
-use async_trait::async_trait;
+use std::future::Future;
+use std::pin::Pin;
 
 pub struct OpenRouterProvider {
+    client: reqwest::Client,
     api_key: String,
 }
 
 impl OpenRouterProvider {
-    pub fn new(api_key: &str) -> Self {
+    pub fn new(client: reqwest::Client, api_key: &str) -> Self {
         Self {
+            client,
             api_key: api_key.to_string(),
         }
     }
 }
 
-#[async_trait]
 impl Provider for OpenRouterProvider {
-    async fn fetch_usage(&self) -> UsageData {
+    fn fetch_usage(&self) -> Pin<Box<dyn Future<Output = UsageData> + Send + '_>> {
+        Box::pin(async move {
         if self.api_key.is_empty() {
             return UsageData::no_api_key("openrouter", "OpenRouter");
         }
 
-        let client = reqwest::Client::new();
         let auth_header = format!("Bearer {}", self.api_key);
 
         // Fetch credits
-        let credits_resp = match client
+        let credits_resp = match self.client
             .get("https://openrouter.ai/api/v1/credits")
             .header("Authorization", &auth_header)
             .header("Accept", "application/json")
@@ -47,7 +49,7 @@ impl Provider for OpenRouterProvider {
         };
 
         // Fetch key info
-        let key_data: serde_json::Value = match client
+        let key_data: serde_json::Value = match self.client
             .get("https://openrouter.ai/api/v1/key")
             .header("Authorization", &auth_header)
             .header("Accept", "application/json")
@@ -127,5 +129,6 @@ impl Provider for OpenRouterProvider {
             },
             updated_at: UsageData::now_timestamp(),
         }
+        })
     }
 }

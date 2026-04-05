@@ -8,6 +8,7 @@ use tauri::{Manager, State};
 
 pub struct AppState {
     pub config: tokio::sync::Mutex<AppConfig>,
+    pub http_client: reqwest::Client,
 }
 
 #[tauri::command]
@@ -29,18 +30,18 @@ pub async fn save_config(
 
 #[tauri::command]
 pub async fn fetch_all_usage(state: State<'_, AppState>) -> Result<Vec<UsageData>, String> {
-    // Clone provider configs and drop lock before making HTTP requests
-    let provider_configs: Vec<_> = {
+    let (provider_configs, client) = {
         let config = state.config.lock().await;
-        config.providers.iter()
+        let pcs: Vec<_> = config.providers.iter()
             .filter(|p| p.enabled)
             .cloned()
-            .collect()
-    }; // lock dropped here
+            .collect();
+        (pcs, state.http_client.clone())
+    };
 
     let mut handles = Vec::new();
     for pc in &provider_configs {
-        let provider = providers::create_provider(pc);
+        let provider = providers::create_provider(pc, &client);
         handles.push(tokio::spawn(async move { provider.fetch_usage().await }));
     }
 

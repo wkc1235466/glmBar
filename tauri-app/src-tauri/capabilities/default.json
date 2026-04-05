@@ -24,7 +24,6 @@
     "core:tray:allow-new",
     "core:tray:allow-set-icon",
     "core:tray:allow-set-tooltip",
-    "core:tray:allow-set-visible",
-    "opener:default"
+    "core:tray:allow-set-visible"
   ]
 }

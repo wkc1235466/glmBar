@@ -1,5 +1,6 @@
 // Settings window logic
 import { getConfig, saveConfig, parseCurlCommand, getAvailableProviderTypes, getProviderFields, listen } from './api.js';
+import { resizeToFit } from './utils.js';
 
 let currentConfig = null;
 let selectedRow = -1;
@@ -19,7 +20,7 @@ async function init() {
 function renderSettings() {
     renderGeneralSettings();
     renderProviderTable();
-    resizeToFit();
+    resizeToFit('app', { center: true });
 }
 
 function renderGeneralSettings() {
@@ -350,44 +351,6 @@ async function buildFields(providerType, existingConfig) {
 
         container.appendChild(div);
     }
-}
-
-// ─── Resize window to fit content ───
-function resizeToFit() {
-    requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-            var appEl = document.getElementById('app');
-            var rect = appEl.getBoundingClientRect();
-            var width = Math.ceil(rect.width);
-            var height = Math.ceil(rect.height);
-            width = Math.max(width, 100);
-            height = Math.max(height, 60);
-
-            var win = window.__TAURI__.window.getCurrentWindow();
-            var mod = window.__TAURI__.dpi || window.__TAURI__.window;
-
-            var sizeObj = mod.LogicalSize
-                ? new mod.LogicalSize(width, height)
-                : { type: 'Logical', width: width, height: height };
-
-            win.setSize(sizeObj).then(function() {
-                return win.primaryMonitor();
-            }).then(function(monitor) {
-                if (monitor) {
-                    var sW = monitor.size.width / monitor.scaleFactor;
-                    var sH = monitor.size.height / monitor.scaleFactor;
-                    var x = Math.round(sW / 2 - width / 2);
-                    var y = Math.round(sH / 2 - height / 2);
-                    var posObj = mod.LogicalPosition
-                        ? new mod.LogicalPosition(Math.max(x, 0), Math.max(y, 0))
-                        : { type: 'Logical', x: Math.max(x, 0), y: Math.max(y, 0) };
-                    return win.setPosition(posObj);
-                }
-            }).catch(function(e) {
-                console.error('resize failed:', e);
-            });
-        });
-    });
 }
 
 // Start

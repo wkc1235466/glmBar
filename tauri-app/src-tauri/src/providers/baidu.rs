@@ -1,15 +1,18 @@
 use crate::providers::models::*;
 use crate::providers::Provider;
-use async_trait::async_trait;
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 
 pub struct BaiduQianfanProvider {
+    client: reqwest::Client,
     extra: HashMap<String, String>,
 }
 
 impl BaiduQianfanProvider {
-    pub fn new(extra: &HashMap<String, String>) -> Self {
+    pub fn new(client: reqwest::Client, extra: &HashMap<String, String>) -> Self {
         Self {
+            client,
             extra: extra.clone(),
         }
     }
@@ -19,9 +22,9 @@ impl BaiduQianfanProvider {
     }
 }
 
-#[async_trait]
 impl Provider for BaiduQianfanProvider {
-    async fn fetch_usage(&self) -> UsageData {
+    fn fetch_usage(&self) -> Pin<Box<dyn Future<Output = UsageData> + Send + '_>> {
+        Box::pin(async move {
         let cookie = match self.get_cookie() {
             Some(c) => c,
             None => {
@@ -30,9 +33,8 @@ impl Provider for BaiduQianfanProvider {
         };
 
         let url = "https://console.bce.baidu.com/api/qianfan/charge/codingPlan/resourceList";
-        let client = reqwest::Client::new();
 
-        let mut req = client
+        let mut req = self.client
             .get(url)
             .header("Cookie", cookie)
             .header("Accept", "application/json;charset=UTF-8")
@@ -160,5 +162,6 @@ impl Provider for BaiduQianfanProvider {
             },
             updated_at: UsageData::now_timestamp(),
         }
+        })
     }
 }

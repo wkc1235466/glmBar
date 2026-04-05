@@ -1,6 +1,8 @@
 // Popup panel logic — matches Python/PySide6 version
 // Uses window.__TAURI__ directly (withGlobalTauri), no import
 
+import { resizeToFit } from './utils.js';
+
 let compact = false;
 let lastRightClickTime = 0;
 let lastRightClickX = 0;
@@ -106,7 +108,7 @@ function renderUsage(usages) {
             '<button class="guide-btn" id="guide-settings-btn">打开设置</button>' +
             '</div>';
         document.getElementById('guide-settings-btn').onclick = openSettings;
-        resizeToFit();
+        doResize();
         return;
     }
 
@@ -125,7 +127,7 @@ function renderUsage(usages) {
     contentEl.dataset.expanded = exp;
     contentEl.dataset.compact = cmp;
     contentEl.innerHTML = compact ? cmp : exp;
-    resizeToFit();
+    doResize();
 }
 
 // ─── Expanded Card (matches Python ProviderCard._build) ───
@@ -209,41 +211,13 @@ function renderCompactRow(u) {
 }
 
 // ─── Resize window to fit content ───
-function resizeToFit() {
-    requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-            var rect = app.getBoundingClientRect();
-            var width = Math.ceil(rect.width);
-            var height = Math.ceil(rect.height);
-            width = Math.max(width, 100);
-            height = Math.max(height, 60);
-            height = Math.min(height, 800);
-
-            var win = window.__TAURI__.window.getCurrentWindow();
-            var mod = window.__TAURI__.dpi || window.__TAURI__.window;
-
-            var sizeObj = mod.LogicalSize
-                ? new mod.LogicalSize(width, height)
-                : { type: 'Logical', width: width, height: height };
-
-            win.setSize(sizeObj).then(function() {
-                return win.primaryMonitor();
-            }).then(function(monitor) {
-                if (monitor) {
-                    var sW = monitor.size.width / monitor.scaleFactor;
-                    var sH = monitor.size.height / monitor.scaleFactor;
-                    var x = Math.round(sW - width - 16);
-                    var y = Math.round(sH - height - 60);
-                    var posObj = mod.LogicalPosition
-                        ? new mod.LogicalPosition(Math.max(x, 0), Math.max(y, 0))
-                        : { type: 'Logical', x: Math.max(x, 0), y: Math.max(y, 0) };
-                    return win.setPosition(posObj);
-                }
-            }).catch(function(e) {
-                console.error('resize failed:', e);
-            });
-        });
-    });
+function doResize() {
+    // Clamp height to max 800px for popup
+    var rect = app.getBoundingClientRect();
+    if (rect.height > 800) {
+        app.style.maxHeight = '800px';
+    }
+    resizeToFit('app');
 }
 
 // ─── Toggle ───
@@ -251,7 +225,7 @@ function toggleCompact() {
     compact = !compact;
     applyCompactMode();
     contentEl.innerHTML = compact ? contentEl.dataset.compact : contentEl.dataset.expanded;
-    resizeToFit();
+    doResize();
 }
 
 function applyCompactMode() {

@@ -1,16 +1,19 @@
 use crate::providers::models::*;
 use crate::providers::Provider;
-use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
+use std::future::Future;
+use std::pin::Pin;
 
 pub struct MiniMaxProvider {
+    client: reqwest::Client,
     api_key: String,
     region: String,
 }
 
 impl MiniMaxProvider {
-    pub fn new(api_key: &str, region: Option<&str>) -> Self {
+    pub fn new(client: reqwest::Client, api_key: &str, region: Option<&str>) -> Self {
         Self {
+            client,
             api_key: api_key.to_string(),
             region: region.unwrap_or("china").to_string(),
         }
@@ -36,19 +39,18 @@ impl MiniMaxProvider {
     }
 }
 
-#[async_trait]
 impl Provider for MiniMaxProvider {
-    async fn fetch_usage(&self) -> UsageData {
+    fn fetch_usage(&self) -> Pin<Box<dyn Future<Output = UsageData> + Send + '_>> {
+        Box::pin(async move {
         if self.api_key.is_empty() {
             return UsageData::no_api_key("minimax", "MiniMax");
         }
 
-        let client = reqwest::Client::new();
         let headers = self.build_headers();
 
         // Primary endpoint
         let primary_url = "https://api.minimax.io/v1/coding_plan/remains";
-        let resp = client
+        let resp = self.client
             .get(primary_url)
             .headers(headers.clone())
             .timeout(std::time::Duration::from_secs(15))
@@ -63,7 +65,7 @@ impl Provider for MiniMaxProvider {
                     "{}/v1/api/openplatform/coding_plan/remains",
                     self.base_url()
                 );
-                match client
+                match self.client
                     .get(&fallback_url)
                     .headers(headers)
                     .timeout(std::time::Duration::from_secs(15))
@@ -146,5 +148,6 @@ impl Provider for MiniMaxProvider {
             },
             updated_at: UsageData::now_timestamp(),
         }
+        })
     }
 }

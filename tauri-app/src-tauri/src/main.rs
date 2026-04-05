@@ -4,6 +4,7 @@
 use glmbar_lib::commands::AppState;
 use glmbar_lib::config::store;
 use glmbar_lib::tray;
+use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -13,10 +14,15 @@ use tauri::{
 fn main() {
     let config = store::load_config();
 
+    let http_client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .expect("Failed to create HTTP client");
+
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             config: tokio::sync::Mutex::new(config),
+            http_client,
         })
         .invoke_handler(tauri::generate_handler![
             glmbar_lib::commands::get_config,
@@ -46,7 +52,6 @@ fn main() {
                 .on_menu_event(move |app, event| {
                     match event.id.as_ref() {
                         "refresh" => {
-                            // Trigger refresh via event
                             let _ = app.emit("trigger-refresh", ());
                         }
                         "settings" => {
@@ -74,106 +79,110 @@ fn main() {
                 })
                 .build(app)?;
 
-            // Start background refresh timer
+            // Start background refresh timer using Tauri's built-in async runtime
             let app_handle = app.handle().clone();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().unwrap();
-                rt.block_on(async move {
-                    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
-                    loop {
-                        interval.tick().await;
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(60));
+                let mut last_avg: Option<f64> = None;
 
-                        // Fetch usage and emit
-                        let state = app_handle.state::<AppState>();
+                loop {
+                    interval.tick().await;
+
+                    // Fetch usage and emit
+                    let state = app_handle.state::<AppState>();
+                    let (enabled, refresh_secs, client) = {
                         let config = state.config.lock().await;
-                        let enabled: Vec<_> =
+                        let pcs: Vec<_> =
                             config.providers.iter().filter(|p| p.enabled).cloned().collect();
-                        let refresh_secs = config.refresh_interval_seconds;
-                        drop(config);
+                        (pcs, config.refresh_interval_seconds, state.http_client.clone())
+                    };
 
-                        // Update interval
-                        interval =
-                            tokio::time::interval(tokio::time::Duration::from_secs(refresh_secs));
+                    // Update interval
+                    interval = tokio::time::interval(Duration::from_secs(refresh_secs));
 
-                        let mut handles = Vec::new();
-                        for pc in enabled {
-                            let provider = glmbar_lib::providers::create_provider(&pc);
-                            handles
-                                .push(tokio::spawn(async move { provider.fetch_usage().await }));
-                        }
+                    let mut handles = Vec::new();
+                    for pc in enabled {
+                        let provider = glmbar_lib::providers::create_provider(&pc, &client);
+                        handles
+                            .push(tokio::spawn(async move { provider.fetch_usage().await }));
+                    }
 
-                        let mut results = Vec::new();
-                        for handle in handles {
-                            match handle.await {
-                                Ok(data) => results.push(data),
-                                Err(e) => results.push(
-                                    glmbar_lib::providers::models::UsageData::error(
-                                        "unknown",
-                                        "Unknown",
-                                        &e.to_string(),
-                                    ),
+                    let mut results = Vec::new();
+                    for handle in handles {
+                        match handle.await {
+                            Ok(data) => results.push(data),
+                            Err(e) => results.push(
+                                glmbar_lib::providers::models::UsageData::error(
+                                    "unknown",
+                                    "Unknown",
+                                    &e.to_string(),
                                 ),
-                            }
+                            ),
                         }
+                    }
 
-                        // Update tray icon
-                        let percents: Vec<f64> = results
-                            .iter()
-                            .filter(|u| {
-                                u.status
-                                    == glmbar_lib::providers::models::ProviderStatus::Ok
-                                    && !u.windows.is_empty()
-                            })
-                            .map(|u| u.windows[0].used_percent)
-                            .collect();
-                        let avg = if percents.is_empty() {
-                            None
-                        } else {
-                            Some(percents.iter().sum::<f64>() / percents.len() as f64)
-                        };
+                    // Calculate average percentage
+                    let percents: Vec<f64> = results
+                        .iter()
+                        .filter(|u| {
+                            u.status
+                                == glmbar_lib::providers::models::ProviderStatus::Ok
+                                && !u.windows.is_empty()
+                        })
+                        .map(|u| u.windows[0].used_percent)
+                        .collect();
+                    let avg = if percents.is_empty() {
+                        None
+                    } else {
+                        Some(percents.iter().sum::<f64>() / percents.len() as f64)
+                    };
 
-                        let icon_bytes = tray::create_usage_icon(avg);
+                    // Update tray icon only if percentage changed
+                    let rounded = avg.map(|v| (v * 10.0).round() / 10.0);
+                    if rounded != last_avg {
+                        let icon_bytes = tray::create_usage_icon(rounded);
                         if let Ok(icon) = tauri::image::Image::from_bytes(&icon_bytes) {
                             if let Some(tray) = app_handle.tray_by_id("main") {
                                 tray.set_icon(Some(icon)).ok();
                             }
                         }
-
-                        // Update tooltip
-                        let tooltip_lines: Vec<String> = results
-                            .iter()
-                            .filter(|u| {
-                                u.status
-                                    != glmbar_lib::providers::models::ProviderStatus::NoApiKey
-                            })
-                            .map(|u| {
-                                let summary = if u.windows.is_empty() {
-                                    match u.status {
-                                        glmbar_lib::providers::models::ProviderStatus::Error => {
-                                            "错误".into()
-                                        }
-                                        glmbar_lib::providers::models::ProviderStatus::Unauthorized => "认证失败".into(),
-                                        _ => "暂无数据".into(),
-                                    }
-                                } else {
-                                    format!("{:.0}%", u.windows[0].used_percent)
-                                };
-                                format!("{}: {}", u.provider_name, summary)
-                            })
-                            .collect();
-                        let tooltip = if tooltip_lines.is_empty() {
-                            "GlmBar - 请配置 API 密钥".into()
-                        } else {
-                            tooltip_lines.join("\n")
-                        };
-                        if let Some(tray) = app_handle.tray_by_id("main") {
-                            tray.set_tooltip(Some(&tooltip)).ok();
-                        }
-
-                        // Emit to frontend
-                        let _ = app_handle.emit("usage-updated", &results);
+                        last_avg = rounded;
                     }
-                });
+
+                    // Update tooltip
+                    let tooltip_lines: Vec<String> = results
+                        .iter()
+                        .filter(|u| {
+                            u.status
+                                != glmbar_lib::providers::models::ProviderStatus::NoApiKey
+                        })
+                        .map(|u| {
+                            let summary = if u.windows.is_empty() {
+                                match u.status {
+                                    glmbar_lib::providers::models::ProviderStatus::Error => {
+                                        "错误".into()
+                                    }
+                                    glmbar_lib::providers::models::ProviderStatus::Unauthorized => "认证失败".into(),
+                                    _ => "暂无数据".into(),
+                                }
+                            } else {
+                                format!("{:.0}%", u.windows[0].used_percent)
+                            };
+                            format!("{}: {}", u.provider_name, summary)
+                        })
+                        .collect();
+                    let tooltip = if tooltip_lines.is_empty() {
+                        "GlmBar - 请配置 API 密钥".into()
+                    } else {
+                        tooltip_lines.join("\n")
+                    };
+                    if let Some(tray) = app_handle.tray_by_id("main") {
+                        tray.set_tooltip(Some(&tooltip)).ok();
+                    }
+
+                    // Emit to frontend
+                    let _ = app_handle.emit("usage-updated", &results);
+                }
             });
 
             Ok(())
