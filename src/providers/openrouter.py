@@ -35,11 +35,7 @@ class OpenRouterProvider(BaseProvider):
     async def fetch_usage(self) -> UsageData:
         token = self.get_api_key()
         if not token:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.NO_API_KEY,
-            )
+            return self._no_key_result()
 
         headers = {
             "Authorization": f"Bearer {token}",
@@ -49,37 +45,28 @@ class OpenRouterProvider(BaseProvider):
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 # Fetch credits
-                credits_resp = await client.get(
-                    f"{self.base_url}/credits", headers=headers
+                credits_result = await self._http_get(
+                    f"{self.base_url}/credits", headers
                 )
-                if credits_resp.status_code == 401:
-                    return UsageData(
-                        provider_id=self.provider_id,
-                        provider_name=self.name,
-                        status=ProviderStatus.UNAUTHORIZED,
-                        error_message="API 密钥无效",
-                    )
-                credits_resp.raise_for_status()
-                credits_data = credits_resp.json()
+                if isinstance(credits_result, UsageData):
+                    return credits_result
+                credits_data = credits_result
 
                 # Fetch key info for rate limits
+                key_data = {}
                 try:
                     key_resp = await client.get(
                         f"{self.base_url}/key", headers=headers
                     )
-                    key_data = key_resp.json() if key_resp.status_code == 200 else {}
+                    if key_resp.status_code == 200:
+                        key_data = key_resp.json()
                 except httpx.HTTPError:
-                    key_data = {}
+                    pass
 
                 return self._parse_response(credits_data, key_data)
 
         except httpx.HTTPError as e:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.ERROR,
-                error_message=str(e),
-            )
+            return self._error_result(str(e))
 
     def _parse_response(self, credits: dict, key_data: dict) -> UsageData:
         total_credits = float(credits.get("total_credits", 0))

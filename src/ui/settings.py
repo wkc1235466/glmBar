@@ -25,8 +25,32 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.config.settings import AppConfig, ProviderConfig, save_config
+from src.config.settings import (
+    AppConfig,
+    ProviderConfig,
+    PROVIDER_DISPLAY_NAMES,
+    PROVIDER_SHORT_NAMES,
+    save_config,
+)
 from src.providers.registry import provider_registry
+
+
+_SETTINGS_BASE_STYLESHEET = (
+    "QDialog { background: #1e1e2e; color: #e0e0e0; }"
+    "QLabel { color: #ccc; font-size: 12px; }"
+    "QPushButton { background: #6C63FF; color: white; border: none; "
+    "border-radius: 6px; padding: 8px 16px; font-size: 13px; }"
+    "QPushButton:hover { background: #5a52e0; }"
+    "QPushButton#secondary, QPushButton#cancel { background: #444; }"
+    "QPushButton#secondary:hover, QPushButton#cancel:hover { background: #555; }"
+    "QLineEdit { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
+    "border-radius: 4px; padding: 6px; }"
+    "QLineEdit:focus { border-color: #6C63FF; }"
+    "QComboBox { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
+    "border-radius: 4px; padding: 6px; }"
+    "QComboBox QAbstractItemView { background: #2a2a3a; color: #e0e0e0; "
+    "selection-background-color: #444; }"
+)
 
 
 class ProviderEditDialog(QDialog):
@@ -36,28 +60,10 @@ class ProviderEditDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("添加服务商" if config is None else "编辑服务商")
         self.setMinimumWidth(420)
-        self.setStyleSheet(self._stylesheet())
+        self.setStyleSheet(_SETTINGS_BASE_STYLESHEET)
         self._config = config
         self._fields: dict[str, QWidget] = {}
         self._build()
-
-    def _stylesheet(self) -> str:
-        return (
-            "QDialog { background: #1e1e2e; color: #e0e0e0; }"
-            "QLineEdit { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
-            "border-radius: 4px; padding: 6px; }"
-            "QLineEdit:focus { border-color: #6C63FF; }"
-            "QComboBox { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
-            "border-radius: 4px; padding: 6px; }"
-            "QComboBox QAbstractItemView { background: #2a2a3a; color: #e0e0e0; "
-            "selection-background-color: #444; }"
-            "QPushButton { background: #6C63FF; color: white; border: none; "
-            "border-radius: 6px; padding: 8px 20px; font-size: 13px; }"
-            "QPushButton:hover { background: #5a52e0; }"
-            "QPushButton#cancel { background: #444; }"
-            "QPushButton#cancel:hover { background: #555; }"
-            "QLabel { color: #ccc; font-size: 12px; }"
-        )
 
     def _build(self) -> None:
         layout = QVBoxLayout(self)
@@ -68,16 +74,8 @@ class ProviderEditDialog(QDialog):
         layout.addWidget(type_label)
 
         self._type_combo = QComboBox()
-        type_names = {
-            "zai": "Z.ai (智谱)",
-            "minimax": "MiniMax",
-            "kimi": "Kimi (月之暗面)",
-            "alibaba": "阿里云百炼",
-            "openrouter": "OpenRouter",
-            "baidu": "百度千帆",
-        }
         for type_id, cls in provider_registry.available_types.items():
-            name = type_names.get(type_id, cls.__name__.replace("Provider", ""))
+            name = PROVIDER_DISPLAY_NAMES.get(type_id, cls.__name__.replace("Provider", ""))
             self._type_combo.addItem(name, type_id)
 
         self._type_combo.addItem("自定义 (custom)", "custom")
@@ -371,20 +369,9 @@ class SettingsWindow(QDialog):
         self.setWindowTitle("GlmBar 设置")
         self.setMinimumSize(550, 450)
         self._config = config
-        self.setStyleSheet(self._stylesheet())
-        self._build()
-
-    def _stylesheet(self) -> str:
-        return (
-            "QDialog { background: #1e1e2e; color: #e0e0e0; }"
-            "QLabel { color: #ccc; font-size: 12px; }"
-            "QPushButton { background: #6C63FF; color: white; border: none; "
-            "border-radius: 6px; padding: 8px 16px; font-size: 13px; }"
-            "QPushButton:hover { background: #5a52e0; }"
+        self.setStyleSheet(_SETTINGS_BASE_STYLESHEET + (
             "QPushButton#danger { background: #c0392b; }"
             "QPushButton#danger:hover { background: #e74c3c; }"
-            "QPushButton#secondary { background: #444; }"
-            "QPushButton#secondary:hover { background: #555; }"
             "QSpinBox { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
             "border-radius: 4px; padding: 4px; }"
             "QTableWidget { background: #1a1a2a; color: #e0e0e0; border: 1px solid #333; "
@@ -395,7 +382,8 @@ class SettingsWindow(QDialog):
             "border: 1px solid #333; padding: 6px; font-weight: bold; }"
             "QCheckBox { color: #ccc; }"
             "QCheckBox::indicator { width: 16px; height: 16px; }"
-        )
+        ))
+        self._build()
 
     def _build(self) -> None:
         layout = QVBoxLayout(self)
@@ -485,16 +473,7 @@ class SettingsWindow(QDialog):
             self._table.setItem(row, 1, name_item)
 
             # Type
-            type_labels = {
-                "zai": "Z.ai 智谱",
-                "minimax": "MiniMax",
-                "kimi": "Kimi 月之暗面",
-                "alibaba": "阿里云百炼",
-                "openrouter": "OpenRouter",
-                "baidu": "百度千帆",
-                "custom": "自定义",
-            }
-            type_item = QTableWidgetItem(type_labels.get(prov.type, prov.type))
+            type_item = QTableWidgetItem(PROVIDER_SHORT_NAMES.get(prov.type, prov.type))
             type_item.setForeground(Qt.GlobalColor.gray)
             self._table.setItem(row, 2, type_item)
 

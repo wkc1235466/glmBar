@@ -103,6 +103,81 @@ class BaseProvider(abc.ABC):
         """Fetch usage data from the provider API."""
         ...
 
+    def _no_key_result(self) -> UsageData:
+        """Return a standard NO_API_KEY result."""
+        return UsageData(
+            provider_id=self.provider_id,
+            provider_name=self.name,
+            status=ProviderStatus.NO_API_KEY,
+        )
+
+    def _error_result(self, message: str, raw: dict | None = None) -> UsageData:
+        """Return a standard ERROR result."""
+        return UsageData(
+            provider_id=self.provider_id,
+            provider_name=self.name,
+            status=ProviderStatus.ERROR,
+            error_message=message,
+            raw_response=raw,
+        )
+
+    def _unauthorized_result(self, message: str = "API 密钥无效或已过期") -> UsageData:
+        """Return a standard UNAUTHORIZED result."""
+        return UsageData(
+            provider_id=self.provider_id,
+            provider_name=self.name,
+            status=ProviderStatus.UNAUTHORIZED,
+            error_message=message,
+        )
+
+    async def _http_get(
+        self,
+        url: str,
+        headers: dict[str, str],
+        *,
+        timeout: int = 15,
+    ) -> UsageData | dict:
+        """Perform a GET request with standard error handling.
+
+        Returns parsed JSON dict on success, or a UsageData error on failure.
+        The caller should check the return type.
+        """
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 401:
+                    return self._unauthorized_result()
+                resp.raise_for_status()
+                return resp.json()
+        except httpx.HTTPError as e:
+            return self._error_result(str(e))
+
+    async def _http_post(
+        self,
+        url: str,
+        headers: dict[str, str],
+        *,
+        payload: dict = {},
+        timeout: int = 15,
+    ) -> UsageData | dict:
+        """Perform a POST request with standard error handling.
+
+        Returns parsed JSON dict on success, or a UsageData error on failure.
+        """
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code == 401:
+                    return self._unauthorized_result()
+                resp.raise_for_status()
+                return resp.json()
+        except httpx.HTTPError as e:
+            return self._error_result(str(e))
+
     def get_display_config(self) -> dict[str, str]:
         """Return config fields for UI rendering.
         Returns dict of field_name -> field_type (text, password, select).

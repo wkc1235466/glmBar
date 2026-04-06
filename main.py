@@ -148,7 +148,7 @@ class GlmBarApp:
         save_config(self._config)
 
         # Rebuild providers
-        provider_registry._instances.clear()
+        provider_registry.clear_instances()
         self._init_providers()
 
         # Update timer interval

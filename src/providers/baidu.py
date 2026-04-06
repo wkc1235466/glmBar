@@ -67,7 +67,7 @@ class BaiduQianfanProvider(BaseProvider):
         headers.update(self._get_auth_headers())
 
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(timeout=15, trust_env=False) as client:
                 resp = await client.get(self.API_URL, headers=headers)
 
                 if resp.status_code in (401, 403):

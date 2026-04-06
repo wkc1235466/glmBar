@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 
 import httpx
@@ -43,97 +42,55 @@ class AlibabaProvider(BaseProvider):
             host = f"https://{host}"
         return host
 
-    async def fetch_usage(self) -> UsageData:
-        token = self.get_api_key()
-        if not token:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.NO_API_KEY,
-            )
-
-        url = (
-            f"{self.base_url}/data/api.json"
-            "?action=zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2"
-            "&product=broadscope-bailian&api=queryCodingPlanInstanceInfoV2"
-        )
-        headers = {
+    def _build_headers(self, token: str) -> dict[str, str]:
+        return {
             "Authorization": f"Bearer {token}",
             "x-api-key": token,
             "X-DashScope-API-Key": token,
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        payload = {}
 
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(url, headers=headers, json=payload)
+    def _api_url(self, host: str) -> str:
+        return (
+            f"{host}/data/api.json"
+            "?action=zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2"
+            "&product=broadscope-bailian&api=queryCodingPlanInstanceInfoV2"
+        )
 
-                if resp.status_code == 401:
-                    # Try fallback region
-                    return await self._try_fallback(client, token)
+    async def fetch_usage(self) -> UsageData:
+        token = self.get_api_key()
+        if not token:
+            return self._no_key_result()
 
-                resp.raise_for_status()
-                data = resp.json()
+        headers = self._build_headers(token)
+        result = await self._http_post(self._api_url(self.base_url), headers)
 
-                # Check for console login required
-                if data.get("Code") == "ConsoleNeedLogin":
-                    return UsageData(
-                        provider_id=self.provider_id,
-                        provider_name=self.name,
-                        status=ProviderStatus.ERROR,
-                        error_message="需要控制台登录 - 此账号不支持 API 密钥模式",
-                    )
+        if isinstance(result, UsageData):
+            if result.status == ProviderStatus.UNAUTHORIZED:
+                return await self._try_fallback(token)
+            return result
 
-                return self._parse_response(data)
+        if result.get("Code") == "ConsoleNeedLogin":
+            return self._error_result("需要控制台登录 - 此账号不支持 API 密钥模式")
 
-        except httpx.HTTPError as e:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.ERROR,
-                error_message=str(e),
-            )
+        return self._parse_response(result)
 
-    async def _try_fallback(self, client: httpx.AsyncClient, token: str) -> UsageData:
+    async def _try_fallback(self, token: str) -> UsageData:
         """Try the alternate region as fallback."""
         current = self.extra_config.get("region", self.region)
         fallback = "global" if current == "china" else "china"
         host = self.DEFAULT_HOSTS[fallback]
 
-        url = (
-            f"{host}/data/api.json"
-            "?action=zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2"
-            "&product=broadscope-bailian&api=queryCodingPlanInstanceInfoV2"
-        )
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "x-api-key": token,
-            "X-DashScope-API-Key": token,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
+        headers = self._build_headers(token)
+        result = await self._http_post(self._api_url(host), headers)
 
-        try:
-            resp = await client.post(url, headers=headers, json={})
-            resp.raise_for_status()
-            data = resp.json()
-            if data.get("Code") == "ConsoleNeedLogin":
-                return UsageData(
-                    provider_id=self.provider_id,
-                    provider_name=self.name,
-                    status=ProviderStatus.ERROR,
-                    error_message="两个区域均需要控制台登录",
-                )
-            return self._parse_response(data)
-        except httpx.HTTPError:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.UNAUTHORIZED,
-                error_message="API 密钥无效或已过期",
-            )
+        if isinstance(result, UsageData):
+            return result
+
+        if result.get("Code") == "ConsoleNeedLogin":
+            return self._error_result("两个区域均需要控制台登录")
+        return self._parse_response(result)
 
     def _parse_response(self, data: dict) -> UsageData:
         windows: list[UsageWindow] = []

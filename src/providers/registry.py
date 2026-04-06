@@ -49,6 +49,10 @@ class ProviderRegistry:
         """Remove a provider instance."""
         self._instances.pop(provider_id, None)
 
+    def clear_instances(self) -> None:
+        """Remove all provider instances."""
+        self._instances.clear()
+
     def get_instance(self, provider_id: str) -> BaseProvider | None:
         """Get a provider instance by ID."""
         return self._instances.get(provider_id)

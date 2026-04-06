@@ -8,7 +8,6 @@ dependencies = [
     "pyside6>=6.8",
     "httpx>=0.28",
     "pydantic>=2.10",
-    "rookiepy>=0.5.6",
 ]
 
 [project.scripts]

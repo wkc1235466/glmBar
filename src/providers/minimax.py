@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
-import httpx
-
 from .base import BaseProvider, ProviderStatus, UsageData, UsageWindow
 
 
@@ -44,54 +40,38 @@ class MiniMaxProvider(BaseProvider):
     async def fetch_usage(self) -> UsageData:
         token = self.get_api_key()
         if not token:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.NO_API_KEY,
-            )
+            return self._no_key_result()
 
         headers = {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
         }
 
-        windows: list[UsageWindow] = []
+        import httpx
 
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 # Primary: API token endpoint
                 api_url = "https://api.minimax.io/v1/coding_plan/remains"
-                try:
-                    resp = await client.get(api_url, headers=headers)
-                    if resp.status_code == 401:
-                        return UsageData(
-                            provider_id=self.provider_id,
-                            provider_name=self.name,
-                            status=ProviderStatus.UNAUTHORIZED,
-                            error_message="API 密钥无效或已过期",
-                        )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        return self._parse_remains(data)
-                except httpx.HTTPError:
-                    pass
+                result = await self._http_get(api_url, headers)
+                if isinstance(result, UsageData):
+                    if result.status == ProviderStatus.UNAUTHORIZED:
+                        return result
+                    # Non-401 error: try fallback
+                else:
+                    return self._parse_remains(result)
 
                 # Fallback: platform remains API
                 fallback_url = f"{self.base_url}/v1/api/openplatform/coding_plan/remains"
-                resp = await client.get(fallback_url, headers=headers)
-                resp.raise_for_status()
-                return self._parse_remains(resp.json())
+                fallback_result = await self._http_get(fallback_url, headers)
+                if isinstance(fallback_result, UsageData):
+                    return fallback_result
+                return self._parse_remains(fallback_result)
 
         except httpx.HTTPError as e:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.ERROR,
-                error_message=str(e),
-            )
+            return self._error_result(str(e))
 
     def _parse_remains(self, data: dict) -> UsageData:
-        # Parse model remains
         model_remains = data.get("model_remains", data.get("data", {}))
 
         if isinstance(model_remains, list):

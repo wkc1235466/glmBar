@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from datetime import datetime, timezone
 
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
@@ -23,6 +22,24 @@ from PySide6.QtWidgets import (
 from src.providers.base import ProviderStatus, UsageData
 
 
+def pct_color(pct: float) -> str:
+    """Return a CSS color string based on usage percentage."""
+    if pct < 50:
+        return "#4CAF50"
+    elif pct < 80:
+        return "#FFC107"
+    return "#F44336"
+
+
+def pct_qcolor(pct: float) -> QColor:
+    """Return a QColor based on usage percentage."""
+    if pct < 50:
+        return QColor(76, 175, 80)
+    elif pct < 80:
+        return QColor(255, 193, 7)
+    return QColor(244, 67, 54)
+
+
 def create_usage_icon(percent: float | None, status: ProviderStatus = ProviderStatus.OK) -> QPixmap:
     """Create a tray icon showing usage percentage as a colored arc."""
     size = 64
@@ -38,12 +55,7 @@ def create_usage_icon(percent: float | None, status: ProviderStatus = ProviderSt
 
     # Usage arc
     if percent is not None and status == ProviderStatus.OK:
-        if percent < 50:
-            color = QColor(76, 175, 80)  # green
-        elif percent < 80:
-            color = QColor(255, 193, 7)  # yellow
-        else:
-            color = QColor(244, 67, 54)  # red
+        color = pct_qcolor(percent)
 
         painter.setPen(QPen(color, 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         span = int(percent / 100 * 360 * 16)
@@ -86,12 +98,7 @@ class UsageBar(QProgressBar):
         self._set_color(value)
 
     def _set_color(self, pct: float) -> None:
-        if pct < 50:
-            color = "#4CAF50"
-        elif pct < 80:
-            color = "#FFC107"
-        else:
-            color = "#F44336"
+        color = pct_color(pct)
         self.setStyleSheet(
             f"QProgressBar {{ background: #2a2a2a; border-radius: 4px; border: none; }}"
             f"QProgressBar::chunk {{ background: {color}; border-radius: 4px; }}"
@@ -115,21 +122,6 @@ class ProviderCard(QFrame):
             )
             self._build(usage)
 
-    @staticmethod
-    def _pct_color(pct: float) -> str:
-        if pct < 50:
-            return "#4CAF50"
-        elif pct < 80:
-            return "#FFC107"
-        return "#F44336"
-
-    @staticmethod
-    def _render_progress_bar(percent: float, width: int = 10) -> str:
-        """Render a Unicode progress bar."""
-        filled = round((percent / 100) * width)
-        empty = width - filled
-        return "█" * filled + "░" * empty
-
     def _build_compact(self, usage: UsageData) -> None:
         """Single QLabel with rich text — height is exactly the font height."""
         # 显示简短名称：智谱、百度等
@@ -139,7 +131,7 @@ class ProviderCard(QFrame):
             if i > 0:
                 parts.append('<span style="color:#555;"> | </span>')
             short = w.label.replace("Token 配额", "Token").replace("MCP/时间配额", "MCP")
-            c = self._pct_color(w.used_percent)
+            c = pct_color(w.used_percent)
             parts.append(f'<span style="color:{c}; font-weight:bold;">{short}：{w.used_percent:.0f}%</span>')
 
         if not usage.windows:
@@ -219,13 +211,8 @@ class ProviderCard(QFrame):
                     mins = int((delta.total_seconds() % 3600) // 60)
                     detail_parts.append(f"{hours}时{mins}分后重置")
 
-            pct_color = (
-                "#4CAF50" if w.used_percent < 50
-                else "#FFC107" if w.used_percent < 80
-                else "#F44336"
-            )
             detail = QLabel("  ".join(detail_parts))
-            detail.setStyleSheet(f"color: {pct_color}; font-size: 13px; font-weight: bold;")
+            detail.setStyleSheet(f"color: {pct_color(w.used_percent)}; font-size: 13px; font-weight: bold;")
             info.addWidget(detail)
 
             win_layout.addLayout(info)
@@ -539,7 +526,7 @@ class UsagePopup(QWidget):
                         elif "MCP" in label or "时间" in label:
                             label = "MCP"
 
-                        c = ProviderCard._pct_color(w.used_percent)
+                        c = pct_color(w.used_percent)
 
                         quota_row = QHBoxLayout()
                         quota_row.setContentsMargins(0, 0, 0, 0)
@@ -679,9 +666,6 @@ class UsagePopup(QWidget):
             self._toggle_compact()
         super().mouseDoubleClickEvent(event)
 
-    def hide(self) -> None:
-        super().hide()
-
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key.Key_Escape:
             self.hide()
@@ -786,5 +770,3 @@ class TrayIcon(QSystemTrayIcon):
         pixmap = create_usage_icon(percent)
         self.setIcon(QIcon(pixmap))
 
-    def hide_popup(self) -> None:
-        self._popup.hide()

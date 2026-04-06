@@ -11,6 +11,27 @@ from pydantic import BaseModel, Field
 CONFIG_DIR = Path.home() / ".glmbar"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
+PROVIDER_DISPLAY_NAMES: dict[str, str] = {
+    "zai": "Z.ai (智谱)",
+    "minimax": "MiniMax",
+    "kimi": "Kimi (月之暗面)",
+    "alibaba": "阿里云百炼",
+    "openrouter": "OpenRouter",
+    "baidu": "百度千帆",
+    "custom": "自定义",
+}
+
+# Short names for table display
+PROVIDER_SHORT_NAMES: dict[str, str] = {
+    "zai": "Z.ai 智谱",
+    "minimax": "MiniMax",
+    "kimi": "Kimi 月之暗面",
+    "alibaba": "阿里云百炼",
+    "openrouter": "OpenRouter",
+    "baidu": "百度千帆",
+    "custom": "自定义",
+}
+
 
 class ProviderConfig(BaseModel):
     """Configuration for a single provider instance."""
@@ -56,13 +77,9 @@ def get_or_create_config() -> AppConfig:
     config = load_config()
     if not config.providers:
         config.providers = [
-            ProviderConfig(id="zai", type="zai", name="Z.ai (智谱)"),
-            ProviderConfig(id="minimax", type="minimax", name="MiniMax"),
-            ProviderConfig(id="kimi", type="kimi", name="Kimi (月之暗面)"),
-            ProviderConfig(id="alibaba", type="alibaba", name="阿里云百炼"),
-            ProviderConfig(id="openrouter", type="openrouter", name="OpenRouter"),
-            ProviderConfig(id="baidu", type="baidu", name="百度千帆"),
-            ProviderConfig(id="baidu", type="baidu", name="百度千帆"),
+            ProviderConfig(id=tid, type=tid, name=name)
+            for tid, name in PROVIDER_DISPLAY_NAMES.items()
+            if tid != "custom"
         ]
         save_config(config)
     return config

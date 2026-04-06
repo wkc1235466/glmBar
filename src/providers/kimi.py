@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
-
-import httpx
 
 from .base import BaseProvider, ProviderStatus, UsageData, UsageWindow
 
@@ -31,11 +28,7 @@ class KimiProvider(BaseProvider):
     async def fetch_usage(self) -> UsageData:
         token = self.get_api_key()
         if not token:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.NO_API_KEY,
-            )
+            return self._no_key_result()
 
         url = "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"
         headers = {
@@ -43,31 +36,11 @@ class KimiProvider(BaseProvider):
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        payload = {}
 
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-
-                if resp.status_code == 401:
-                    return UsageData(
-                        provider_id=self.provider_id,
-                        provider_name=self.name,
-                        status=ProviderStatus.UNAUTHORIZED,
-                        error_message="认证令牌无效或已过期",
-                    )
-                resp.raise_for_status()
-                data = resp.json()
-
-        except httpx.HTTPError as e:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.ERROR,
-                error_message=str(e),
-            )
-
-        return self._parse_response(data)
+        result = await self._http_post(url, headers)
+        if isinstance(result, UsageData):
+            return result
+        return self._parse_response(result)
 
     def _parse_response(self, data: dict) -> UsageData:
         usages = data.get("usages", [])
@@ -77,7 +50,6 @@ class KimiProvider(BaseProvider):
             if usage_entry.get("scope") != "FEATURE_CODING":
                 continue
 
-            # Primary: weekly quota
             detail = usage_entry.get("detail", {})
             limit = float(detail.get("limit", 0))
             used = float(detail.get("used", 0))
@@ -106,7 +78,6 @@ class KimiProvider(BaseProvider):
                     )
                 )
 
-            # Secondary: 5-hour rate limit
             for sub_limit in usage_entry.get("limits", []):
                 window = sub_limit.get("window", {})
                 sub_detail = sub_limit.get("detail", {})
@@ -126,7 +97,6 @@ class KimiProvider(BaseProvider):
                             pass
 
                     duration = window.get("duration", 300)
-                    time_unit = window.get("timeUnit", "")
                     label = f"{duration // 60}小时限流" if duration >= 60 else f"{duration}分钟限流"
 
                     windows.append(

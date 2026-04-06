@@ -5,8 +5,6 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
-import httpx
-
 from .base import BaseProvider, ProviderStatus, UsageData, UsageWindow
 
 
@@ -49,11 +47,7 @@ class ZaiProvider(BaseProvider):
     async def fetch_usage(self) -> UsageData:
         token = self.get_api_key()
         if not token:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.NO_API_KEY,
-            )
+            return self._no_key_result()
 
         url = f"{self.base_url}/api/monitor/usage/quota/limit"
         headers = {
@@ -61,39 +55,15 @@ class ZaiProvider(BaseProvider):
             "Accept": "application/json",
         }
 
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(url, headers=headers)
-
-                if resp.status_code == 401:
-                    return UsageData(
-                        provider_id=self.provider_id,
-                        provider_name=self.name,
-                        status=ProviderStatus.UNAUTHORIZED,
-                        error_message="API 密钥无效或已过期",
-                    )
-                resp.raise_for_status()
-                data = resp.json()
-
-        except httpx.HTTPError as e:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.ERROR,
-                error_message=str(e),
-            )
-
-        return self._parse_response(data)
+        result = await self._http_get(url, headers)
+        if isinstance(result, UsageData):
+            return result
+        return self._parse_response(result)
 
     def _parse_response(self, data: dict) -> UsageData:
         code = data.get("code", -1)
         if code != 200:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.ERROR,
-                error_message=data.get("msg", f"API 错误码: {code}"),
-            )
+            return self._error_result(data.get("msg", f"API 错误码: {code}"))
 
         payload = data.get("data", {})
         plan_name = (
