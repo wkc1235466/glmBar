@@ -27,7 +27,7 @@
 - **多服务商支持** - 支持智谱AI、MiniMax、Kimi、阿里云百炼、OpenRouter、百度千帆等主流 AI 服务商
 - **自定义服务商** - 支持添加任意兼容 OpenAI 格式的 API 服务商
 - **自动刷新** - 可配置刷新间隔，后台自动获取最新用量
-- **轻量高效** - 基于 Tauri v2 构建，安装包仅约 5MB，内存占用极低
+- **轻量高效** - Python 版基于 PySide6，Tauri 版安装包仅约 5MB
 
 ## 支持的服务商
 
@@ -58,13 +58,66 @@
 
 ## 开发
 
-### 环境要求
+项目提供两个版本：Python 版本（PySide6 桌面应用）和 Tauri 版本（Rust 后端）。
+
+### Python 版本
+
+#### 环境要求
+
+- Python 3.11+
+
+#### 本地运行
+
+```bash
+# 安装依赖
+uv sync
+
+# 运行应用
+python main.py
+```
+
+#### 技术栈
+
+- **GUI 框架**: PySide6
+- **网络请求**: httpx (异步 HTTP)
+- **配置管理**: Pydantic
+- **数据模型**: dataclass
+
+#### 项目结构
+
+```
+glmBar/
+├── main.py                   # 应用入口
+├── src/
+│   ├── config/
+│   │   └── settings.py       # 配置管理 (AppConfig, ProviderConfig)
+│   ├── providers/
+│   │   ├── base.py           # BaseProvider 基类与数据模型
+│   │   ├── registry.py       # Provider 注册表与 CustomProvider
+│   │   ├── zai.py            # 智谱AI
+│   │   ├── minimax.py        # MiniMax
+│   │   ├── kimi.py           # Kimi
+│   │   ├── alibaba.py        # 阿里云百炼
+│   │   ├── openrouter.py     # OpenRouter
+│   │   └── baidu.py          # 百度千帆 (Cookie 认证)
+│   ├── ui/
+│   │   ├── tray.py           # 系统托盘图标与弹出面板
+│   │   └── settings.py       # 设置界面
+│   └── utils/
+│       └── curl_parser.py    # cURL 命令解析
+├── pyproject.toml
+└── README.md
+```
+
+### Tauri 版本
+
+#### 环境要求
 
 - Node.js 18+
 - Rust 1.70+
 - pnpm/npm
 
-### 本地运行
+#### 本地运行
 
 ```bash
 cd tauri-app
@@ -81,33 +134,12 @@ npm run build
 
 构建产物位于 `src-tauri/target/release/bundle/` 目录。
 
-## 技术栈
+#### 技术栈
 
 - **前端**: 原生 HTML/CSS/JavaScript（无框架）
 - **后端**: Rust + Tauri v2
 - **网络**: reqwest (异步 HTTP 客户端)
 - **图标渲染**: tiny-skia (软件渲染)
-
-## 项目结构
-
-```
-glmBar/
-├── tauri-app/                # Tauri 应用目录
-│   ├── src/                  # 前端源码
-│   │   ├── index.html        # 弹出面板
-│   │   ├── settings.html     # 设置界面
-│   │   ├── css/              # 样式文件
-│   │   └── js/               # JavaScript 模块
-│   └── src-tauri/            # Rust 后端
-│       ├── src/
-│       │   ├── main.rs       # 入口文件
-│       │   ├── commands.rs   # Tauri 命令
-│       │   ├── tray.rs       # 托盘图标生成
-│       │   ├── providers/    # 服务商实现
-│       │   └── config/       # 配置管理
-│       └── tauri.conf.json   # Tauri 配置
-└── README.md
-```
 
 ## 许可证
 
