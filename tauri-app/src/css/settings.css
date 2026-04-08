@@ -17,8 +17,8 @@ body {
 /* Drag region for settings window */
 .drag-region {
     height: 32px;
-    data-tauri-drag-region;
     flex-shrink: 0;
+    cursor: default;
 }
 
 /* Content */

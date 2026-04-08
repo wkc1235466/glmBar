@@ -9,12 +9,25 @@ let selectedRow = -1;
 async function init() {
     currentConfig = await getConfig();
     renderSettings();
+    setupDragRegion();
 
     // Listen for config requests from popup
     listen('refresh-config', async () => {
         currentConfig = await getConfig();
         renderSettings();
     });
+}
+
+// Setup drag region using JavaScript API
+function setupDragRegion() {
+    const dragRegion = document.querySelector('.drag-region');
+    if (dragRegion) {
+        dragRegion.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                window.__TAURI__.window.getCurrentWindow().startDragging();
+            }
+        });
+    }
 }
 
 function renderSettings() {
