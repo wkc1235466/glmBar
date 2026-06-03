@@ -181,7 +181,7 @@ class ProviderEditDialog(QDialog):
             elif field_type == "textarea":
                 text_edit = QTextEdit()
                 text_edit.setMaximumHeight(120)
-                text_edit.setPlaceholderText("粘贴浏览器中复制的 curl 命令...")
+                text_edit.setPlaceholderText("粘贴 resourceList 请求的 curl 命令（复制为 cURL(bash)）...")
                 text_edit.setStyleSheet(
                     "QTextEdit { background: #2a2a3a; color: #e0e0e0; border: 1px solid #444; "
                     "border-radius: 4px; padding: 6px; font-family: monospace; font-size: 11px; }"
@@ -257,13 +257,12 @@ class ProviderEditDialog(QDialog):
             "style='color:#6C63FF;'>百度千帆资源订阅页面</a></p>"
             "<p><b style='color:#fff;'>2.</b> 按 <b>F12</b> 打开浏览器开发者工具，"
             "切换到 <b>网络 (Network)</b> 标签页</p>"
-            "<p><b style='color:#fff;'>3.</b> 点击页面中 <b>续费</b> 按钮旁边的 "
-            "<b>刷新按钮</b>（或直接刷新页面）</p>"
-            "<p><b style='color:#fff;'>4.</b> 在网络请求列表中找到名为 "
+            "<p><b style='color:#fff;'>3.</b> 在网络请求列表中找到名为 "
             "<b style='color:#FFD700;'>resourceList</b> 的请求</p>"
-            "<p><b style='color:#fff;'>5.</b> 右键点击该请求 → <b>复制</b> → "
-            "<b>复制为 cURL(bash)</b></p>"
-            "<p><b style='color:#fff;'>6.</b> 将复制的内容粘贴到上方的文本框中，"
+            "<p><b style='color:#fff;'>4.</b> 右键点击该请求 → <b>复制</b> → "
+            "<b>复制为 cURL(bash)</b>"
+            "（注意：选\"复制为 cURL(bash)\"，不要选\"全部复制\"）</p>"
+            "<p><b style='color:#fff;'>5.</b> 将复制的内容粘贴到上方的文本框中，"
             "点击保存即可</p>"
             "</div>"
         )
@@ -317,14 +316,20 @@ class ProviderEditDialog(QDialog):
                     from src.providers.baidu import BaiduQianfanProvider
 
                     parsed = BaiduQianfanProvider.parse_curl(curl_text)
-                    extra.update(parsed)
-                    if not parsed:
+                    if not parsed.get("cookie"):
                         QMessageBox.warning(
                             self,
                             "解析失败",
-                            "无法从 curl 命令中提取认证信息，请检查格式是否正确。",
+                            "无法从 curl 命令中提取 Cookie 信息，请确保复制了正确的请求。",
                         )
                         return
+                    extra.update(parsed)
+                elif self._config:
+                    # Re-editing without new curl: preserve existing auth data
+                    for k in ("cookie", "csrftoken", "x-bce-jt"):
+                        v = self._config.extra.get(k)
+                        if v:
+                            extra[k] = v
             else:
                 for name, widget in self._fields.items():
                     if isinstance(widget, QComboBox):
@@ -479,10 +484,20 @@ class SettingsWindow(QDialog):
 
             # API Key (masked)
             key = prov.api_key
-            masked = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else ("已设置" if key else "未设置")
+            if len(key) > 12:
+                masked = f"{key[:8]}...{key[-4:]}"
+            elif key:
+                masked = "已设置"
+            elif prov.type == "baidu" and (
+                prov.extra.get("cookie") or prov.extra.get("csrftoken")
+            ):
+                masked = "已配置"
+            else:
+                masked = "未设置"
             key_item = QTableWidgetItem(masked)
+            is_configured = bool(key) or masked == "已配置"
             key_item.setForeground(
-                Qt.GlobalColor.green if key else Qt.GlobalColor.gray
+                Qt.GlobalColor.green if is_configured else Qt.GlobalColor.gray
             )
             self._table.setItem(row, 3, key_item)
 

@@ -77,6 +77,15 @@ function renderProviderTable() {
         // API Key status
         const tdKey = document.createElement('td');
         const key = prov.api_key;
+        if (prov.type === 'baidu') {
+            console.log('[DEBUG] render baidu:', JSON.stringify({
+                type: prov.type,
+                apiKey: key,
+                extra_keys: Object.keys(prov.extra || {}),
+                has_cookie: !!prov.extra?.cookie,
+                has_csrftoken: !!prov.extra?.csrftoken,
+            }));
+        }
         if (key && key.length > 12) {
             tdKey.textContent = key.slice(0, 8) + '...' + key.slice(-4);
             tdKey.className = 'key-set';
@@ -233,13 +242,32 @@ async function showProviderModal(existingConfig, types) {
             // Baidu curl parsing
             if (typeId === 'baidu') {
                 const curlInput = fieldsContainer.querySelector('[data-field="curl"]');
+                console.log('[DEBUG] curlInput found:', !!curlInput, 'value length:', curlInput?.value?.trim()?.length);
                 if (curlInput && curlInput.value.trim()) {
-                    const parsed = await parseCurlCommand(curlInput.value.trim());
-                    if (Object.keys(parsed).length === 0) {
-                        alert('无法从 curl 命令中提取认证信息');
+                    try {
+                        const parsed = await parseCurlCommand(curlInput.value.trim());
+                        console.log('[DEBUG] parseCurl result:', JSON.stringify(Object.keys(parsed)));
+                        console.log('[DEBUG] has cookie:', !!parsed.cookie, 'has csrftoken:', !!parsed.csrftoken);
+                        if (!parsed.cookie) {
+                            alert('无法从 curl 命令中提取 Cookie 信息，请确保复制了正确的请求');
+                            return;
+                        }
+                        Object.assign(extra, parsed);
+                        delete extra.curl; // Don't save raw curl text to config
+                    } catch (e) {
+                        console.error('parseCurl error:', e);
+                        alert('curl 命令解析失败: ' + e);
                         return;
                     }
-                    Object.assign(extra, parsed);
+                } else if (existingConfig) {
+                    // Re-editing without new curl: preserve existing auth data
+                    if (existingConfig.extra) {
+                        for (const k of ['cookie', 'csrftoken', 'x-bce-jt']) {
+                            if (existingConfig.extra[k]) {
+                                extra[k] = existingConfig.extra[k];
+                            }
+                        }
+                    }
                 }
             }
 
@@ -263,6 +291,14 @@ async function showProviderModal(existingConfig, types) {
         } else {
             currentConfig.providers.push(newConfig);
         }
+
+        console.log('[DEBUG] newConfig saved:', JSON.stringify({
+            type: newConfig.type,
+            api_key: newConfig.api_key,
+            extra_keys: Object.keys(newConfig.extra || {}),
+            has_cookie: !!newConfig.extra?.cookie,
+            has_csrftoken: !!newConfig.extra?.csrftoken,
+        }));
 
         overlay.classList.remove('active');
         renderProviderTable();
@@ -315,7 +351,7 @@ async function buildFields(providerType, existingConfig) {
         } else if (fieldType === 'textarea') {
             const textarea = document.createElement('textarea');
             textarea.dataset.field = fieldName;
-            textarea.placeholder = '粘贴浏览器中复制的 curl 命令...';
+            textarea.placeholder = '粘贴 resourceList 请求的 curl 命令（复制为 cURL(bash)）...';
 
             // Baidu: show placeholder for existing config
             if (existingConfig && providerType === 'baidu') {
@@ -336,10 +372,10 @@ async function buildFields(providerType, existingConfig) {
                     '获取 curl 命令步骤:\n\n' +
                     '1. 登录 百度千帆资源订阅页面\n' +
                     '2. 按 F12 打开浏览器开发者工具，切换到 网络 (Network) 标签页\n' +
-                    '3. 点击页面中的 刷新按钮\n' +
-                    '4. 在网络请求列表中找到名为 resourceList 的请求\n' +
-                    '5. 右键点击该请求 → 复制 → 复制为 cURL(bash)\n' +
-                    '6. 将复制的内容粘贴到上方的文本框中，点击保存即可'
+                    '3. 在网络请求列表中找到名为 resourceList 的请求\n' +
+                    '4. 右键点击该请求 → 复制 → 复制为 cURL(bash)\n' +
+                    '   （注意：选"复制为 cURL(bash)"，不要选"全部复制"）\n' +
+                    '5. 将复制的内容粘贴到上方的文本框中，点击保存即可'
                 );
                 div.appendChild(help);
             }

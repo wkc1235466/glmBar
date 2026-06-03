@@ -4,7 +4,7 @@ use crate::curl_parser;
 use crate::providers;
 use crate::providers::models::UsageData;
 use std::collections::HashMap;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 pub struct AppState {
     pub config: tokio::sync::Mutex<AppConfig>,
@@ -20,11 +20,14 @@ pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String>
 #[tauri::command]
 pub async fn save_config(
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
     config: AppConfig,
 ) -> Result<(), String> {
     let mut cfg = state.config.lock().await;
     *cfg = config.clone();
     store::save_config(&cfg);
+    drop(cfg); // Release lock before emitting event
+    let _ = app.emit("trigger-refresh", ());
     Ok(())
 }
 
@@ -85,6 +88,7 @@ pub async fn show_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
+        let _ = app.emit("refresh-config", ());
     }
     Ok(())
 }

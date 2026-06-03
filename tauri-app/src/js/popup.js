@@ -33,17 +33,20 @@ async function init() {
     }
 
     if (compact) applyCompactMode();
-    await refreshUsage();
 
+    // Register event listeners BEFORE initial fetch to avoid missing events
     tauriListen('usage-updated', function(event) {
         renderUsage(event.payload);
     });
     tauriListen('trigger-refresh', async function() {
         await refreshUsage();
     });
+
+    await refreshUsage();
 }
 
 async function refreshUsage() {
+    contentEl.innerHTML = '<div class="loading">刷新中...</div>';
     try {
         const usages = await tauriInvoke('fetch_all_usage');
         renderUsage(usages);

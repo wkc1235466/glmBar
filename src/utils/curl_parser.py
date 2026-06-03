@@ -21,4 +21,13 @@ def parse_curl(curl_text: str) -> dict[str, str]:
             result["csrftoken"] = value.strip()
         elif key_lower == "x-bce-jt":
             result["x-bce-jt"] = value.strip()
+
+    # Also parse -b / --cookie flags (browser "Copy as cURL" uses this format)
+    if "cookie" not in result:
+        m = re.search(r"(?:-b|--cookie)\s+'([^']+)'", curl_text)
+        if not m:
+            m = re.search(r'(?:-b|--cookie)\s+"([^"]+)"', curl_text)
+        if m and m.group(1).strip():
+            result["cookie"] = m.group(1).strip()
+
     return result
