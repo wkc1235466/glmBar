@@ -18,6 +18,7 @@ PROVIDER_DISPLAY_NAMES: dict[str, str] = {
     "alibaba": "阿里云百炼",
     "openrouter": "OpenRouter",
     "baidu": "百度千帆",
+    "opencode": "OpenCode Go",
     "custom": "自定义",
 }
 
@@ -29,6 +30,7 @@ PROVIDER_SHORT_NAMES: dict[str, str] = {
     "alibaba": "阿里云百炼",
     "openrouter": "OpenRouter",
     "baidu": "百度千帆",
+    "opencode": "OpenCode Go",
     "custom": "自定义",
 }
 

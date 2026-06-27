@@ -16,6 +16,7 @@ fn main() {
 
     let http_client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
+        .http1_only()
         .build()
         .expect("Failed to create HTTP client");
 

@@ -190,15 +190,17 @@ class ProviderEditDialog(QDialog):
                 self._fields[field_name] = text_edit
                 self._fields_layout.addWidget(text_edit)
 
-                # 百度千帆：添加教程链接
-                if type_id == "baidu":
+                # curl 认证类：添加教程链接
+                if type_id in ("baidu", "opencode"):
                     help_btn = QPushButton("如何获取 curl 命令？")
                     help_btn.setObjectName("secondary")
                     help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                     help_btn.setSizePolicy(
                         QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed
                     )
-                    help_btn.clicked.connect(self._show_baidu_tutorial)
+                    help_btn.clicked.connect(
+                        lambda checked=False, t=type_id: self._show_curl_tutorial(t)
+                    )
                     self._fields_layout.addWidget(help_btn)
             else:
                 line_edit = QLineEdit()
@@ -222,11 +224,14 @@ class ProviderEditDialog(QDialog):
             self._custom_name.setText(cfg.name)
             self._custom_url.setText(cfg.extra.get("quota_url", ""))
             self._custom_env_key.setText(cfg.extra.get("env_key", ""))
-        elif cfg.type == "baidu":
-            # 百度千帆：显示已配置状态提示，不回填 curl
+        elif cfg.type in ("baidu", "opencode"):
+            # curl 认证类：显示已配置状态提示，不回填 curl
             curl_widget = self._fields.get("curl")
             if curl_widget and isinstance(curl_widget, QTextEdit):
-                has_config = cfg.extra.get("cookie") or cfg.extra.get("csrftoken")
+                if cfg.type == "opencode":
+                    has_config = cfg.extra.get("cookie") or cfg.extra.get("auth")
+                else:
+                    has_config = cfg.extra.get("cookie") or cfg.extra.get("csrftoken")
                 if has_config:
                     curl_widget.setPlaceholderText(
                         "已有配置。如需更新，粘贴新的 curl 命令覆盖即可。"
@@ -247,24 +252,46 @@ class ProviderEditDialog(QDialog):
                     else:
                         widget.setText(str(val))
 
-    def _show_baidu_tutorial(self) -> None:
-        """显示百度千帆 curl 获取教程对话框。"""
+    def _show_curl_tutorial(self, type_id: str) -> None:
+        """显示 curl 获取教程对话框（百度千帆 / OpenCode Go）。"""
+        if type_id == "opencode":
+            steps = (
+                "<p><b style='color:#fff;'>1.</b> 登录 "
+                "<a href='https://opencode.ai' style='color:#6C63FF;'>opencode.ai</a> "
+                "并进入你的 workspace（地址栏形如 "
+                "<span style='color:#FFD700;'>opencode.ai/workspace/wrk_xxx/go</span>）</p>"
+                "<p><b style='color:#fff;'>2.</b> 按 <b>F12</b> 打开浏览器开发者工具，"
+                "切换到 <b>网络 (Network)</b> 标签页</p>"
+                "<p><b style='color:#fff;'>3.</b> 刷新页面，在网络请求列表中找到名为 "
+                "<b style='color:#FFD700;'>go</b> 的请求</p>"
+                "<p><b style='color:#fff;'>4.</b> 右键点击该请求 → <b>复制</b> → "
+                "<b>复制为 cURL</b>（bash 或 cmd 均可）</p>"
+                "<p><b style='color:#fff;'>5.</b> 将复制的内容粘贴到上方的文本框中，"
+                "点击保存即可</p>"
+                "<p style='color:#999;font-size:11px;'>提示：opencode 的 auth 是会话 Cookie，"
+                "会定期失效，过期后重新复制即可。</p>"
+            )
+        else:
+            # baidu (default)
+            steps = (
+                "<p><b style='color:#fff;'>1.</b> 登录 "
+                "<a href='https://console.bce.baidu.com/qianfan/resource/subscribe' "
+                "style='color:#6C63FF;'>百度千帆资源订阅页面</a></p>"
+                "<p><b style='color:#fff;'>2.</b> 按 <b>F12</b> 打开浏览器开发者工具，"
+                "切换到 <b>网络 (Network)</b> 标签页</p>"
+                "<p><b style='color:#fff;'>3.</b> 在网络请求列表中找到名为 "
+                "<b style='color:#FFD700;'>resourceList</b> 的请求</p>"
+                "<p><b style='color:#fff;'>4.</b> 右键点击该请求 → <b>复制</b> → "
+                "<b>复制为 cURL(bash)</b>"
+                "（注意：选\"复制为 cURL(bash)\"，不要选\"全部复制\"）</p>"
+                "<p><b style='color:#fff;'>5.</b> 将复制的内容粘贴到上方的文本框中，"
+                "点击保存即可</p>"
+            )
         tutorial_text = (
             "<div style='color:#e0e0e0; font-size:13px; line-height:1.8;'>"
             "<h3 style='color:#6C63FF;'>获取 curl 命令步骤</h3>"
-            "<p><b style='color:#fff;'>1.</b> 登录 "
-            "<a href='https://console.bce.baidu.com/qianfan/resource/subscribe' "
-            "style='color:#6C63FF;'>百度千帆资源订阅页面</a></p>"
-            "<p><b style='color:#fff;'>2.</b> 按 <b>F12</b> 打开浏览器开发者工具，"
-            "切换到 <b>网络 (Network)</b> 标签页</p>"
-            "<p><b style='color:#fff;'>3.</b> 在网络请求列表中找到名为 "
-            "<b style='color:#FFD700;'>resourceList</b> 的请求</p>"
-            "<p><b style='color:#fff;'>4.</b> 右键点击该请求 → <b>复制</b> → "
-            "<b>复制为 cURL(bash)</b>"
-            "（注意：选\"复制为 cURL(bash)\"，不要选\"全部复制\"）</p>"
-            "<p><b style='color:#fff;'>5.</b> 将复制的内容粘贴到上方的文本框中，"
-            "点击保存即可</p>"
-            "</div>"
+            + steps
+            + "</div>"
         )
         dlg = QMessageBox(self)
         dlg.setWindowTitle("获取 curl 命令教程")
@@ -306,27 +333,31 @@ class ProviderEditDialog(QDialog):
         else:
             api_key = ""
             extra: dict[str, Any] = {}
-            # 百度千帆特殊处理：解析 curl 文本
-            if type_id == "baidu":
+            # curl 认证类服务商：解析 curl 文本（百度千帆 / OpenCode Go）
+            curl_providers = {
+                "baidu": ("cookie", "csrftoken", "x-bce-jt"),
+                "opencode": ("auth", "url", "cookie"),
+            }
+            if type_id in curl_providers:
                 curl_widget = self._fields.get("curl")
                 curl_text = ""
                 if curl_widget and isinstance(curl_widget, QTextEdit):
                     curl_text = curl_widget.toPlainText().strip()
                 if curl_text:
-                    from src.providers.baidu import BaiduQianfanProvider
+                    from src.utils.curl_parser import parse_curl
 
-                    parsed = BaiduQianfanProvider.parse_curl(curl_text)
-                    if not parsed.get("cookie"):
+                    parsed = parse_curl(curl_text)
+                    if not parsed.get("cookie") and not parsed.get("auth"):
                         QMessageBox.warning(
                             self,
                             "解析失败",
-                            "无法从 curl 命令中提取 Cookie 信息，请确保复制了正确的请求。",
+                            "无法从 curl 命令中提取认证信息，请确保复制了正确的请求。",
                         )
                         return
                     extra.update(parsed)
                 elif self._config:
                     # Re-editing without new curl: preserve existing auth data
-                    for k in ("cookie", "csrftoken", "x-bce-jt"):
+                    for k in curl_providers[type_id]:
                         v = self._config.extra.get(k)
                         if v:
                             extra[k] = v
@@ -490,6 +521,10 @@ class SettingsWindow(QDialog):
                 masked = "已设置"
             elif prov.type == "baidu" and (
                 prov.extra.get("cookie") or prov.extra.get("csrftoken")
+            ):
+                masked = "已配置"
+            elif prov.type == "opencode" and (
+                prov.extra.get("cookie") or prov.extra.get("auth")
             ):
                 masked = "已配置"
             else:

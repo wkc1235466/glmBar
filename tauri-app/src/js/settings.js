@@ -69,7 +69,7 @@ function renderProviderTable() {
         const typeLabels = {
             zai: 'Z.ai 智谱', minimax: 'MiniMax', kimi: 'Kimi 月之暗面',
             alibaba: '阿里云百炼', openrouter: 'OpenRouter',
-            baidu: '百度千帆', custom: '自定义',
+            baidu: '百度千帆', opencode: 'OpenCode Go', custom: '自定义',
         };
         tdType.textContent = typeLabels[prov.type] || prov.type;
         tdType.style.color = '#888';
@@ -92,7 +92,8 @@ function renderProviderTable() {
         } else if (key) {
             tdKey.textContent = '已设置';
             tdKey.className = 'key-set';
-        } else if (prov.type === 'baidu' && prov.extra && (prov.extra.cookie || prov.extra.csrftoken)) {
+        } else if ((prov.type === 'baidu' && prov.extra && (prov.extra.cookie || prov.extra.csrftoken)) ||
+                   (prov.type === 'opencode' && prov.extra && (prov.extra.cookie || prov.extra.auth))) {
             tdKey.textContent = '已配置';
             tdKey.className = 'key-set';
         } else {
@@ -239,17 +240,18 @@ async function showProviderModal(existingConfig, types) {
                 }
             }
 
-            // Baidu curl parsing
-            if (typeId === 'baidu') {
+            // curl-based providers: parse the pasted curl into auth fields
+            const curlProviders = {
+                baidu: ['cookie', 'csrftoken', 'x-bce-jt'],
+                opencode: ['auth', 'url', 'cookie'],
+            };
+            if (curlProviders[typeId]) {
                 const curlInput = fieldsContainer.querySelector('[data-field="curl"]');
-                console.log('[DEBUG] curlInput found:', !!curlInput, 'value length:', curlInput?.value?.trim()?.length);
                 if (curlInput && curlInput.value.trim()) {
                     try {
                         const parsed = await parseCurlCommand(curlInput.value.trim());
-                        console.log('[DEBUG] parseCurl result:', JSON.stringify(Object.keys(parsed)));
-                        console.log('[DEBUG] has cookie:', !!parsed.cookie, 'has csrftoken:', !!parsed.csrftoken);
-                        if (!parsed.cookie) {
-                            alert('无法从 curl 命令中提取 Cookie 信息，请确保复制了正确的请求');
+                        if (!parsed.cookie && !parsed.auth) {
+                            alert('无法从 curl 命令中提取认证信息，请确保复制了正确的请求');
                             return;
                         }
                         Object.assign(extra, parsed);
@@ -262,7 +264,7 @@ async function showProviderModal(existingConfig, types) {
                 } else if (existingConfig) {
                     // Re-editing without new curl: preserve existing auth data
                     if (existingConfig.extra) {
-                        for (const k of ['cookie', 'csrftoken', 'x-bce-jt']) {
+                        for (const k of curlProviders[typeId]) {
                             if (existingConfig.extra[k]) {
                                 extra[k] = existingConfig.extra[k];
                             }
@@ -274,6 +276,7 @@ async function showProviderModal(existingConfig, types) {
             const typeNames = {
                 zai: 'Z.ai (智谱)', minimax: 'MiniMax', kimi: 'Kimi (月之暗面)',
                 alibaba: '阿里云百炼', openrouter: 'OpenRouter', baidu: '百度千帆',
+                opencode: 'OpenCode Go',
             };
 
             newConfig = {
@@ -308,6 +311,28 @@ async function showProviderModal(existingConfig, types) {
     document.getElementById('modal-cancel').onclick = () => {
         overlay.classList.remove('active');
     };
+}
+
+// Provider-specific tutorial text for obtaining the curl command.
+function curlTutorial(providerType) {
+    if (providerType === 'opencode') {
+        return '获取 curl 命令步骤:\n\n' +
+            '1. 登录 https://opencode.ai 并进入你的 workspace\n' +
+            '   （浏览器地址栏形如 https://opencode.ai/workspace/wrk_xxx/go）\n' +
+            '2. 按 F12 打开开发者工具，切换到 网络 (Network) 标签页\n' +
+            '3. 刷新页面，在请求列表中找到名为 go 的请求\n' +
+            '4. 右键该请求 → 复制 → 复制为 cURL（bash 或 cmd 均可）\n' +
+            '5. 粘贴到上方文本框，保存即可\n\n' +
+            '提示：opencode 的 auth 是会话 Cookie，会定期失效，过期后重新复制即可。';
+    }
+    // baidu (default)
+    return '获取 curl 命令步骤:\n\n' +
+        '1. 登录 百度千帆资源订阅页面\n' +
+        '2. 按 F12 打开浏览器开发者工具，切换到 网络 (Network) 标签页\n' +
+        '3. 在网络请求列表中找到名为 resourceList 的请求\n' +
+        '4. 右键点击该请求 → 复制 → 复制为 cURL(bash)\n' +
+        '   （注意：选"复制为 cURL(bash)"，不要选"全部复制"）\n' +
+        '5. 将复制的内容粘贴到上方的文本框中，点击保存即可';
 }
 
 async function buildFields(providerType, existingConfig) {
@@ -351,11 +376,17 @@ async function buildFields(providerType, existingConfig) {
         } else if (fieldType === 'textarea') {
             const textarea = document.createElement('textarea');
             textarea.dataset.field = fieldName;
-            textarea.placeholder = '粘贴 resourceList 请求的 curl 命令（复制为 cURL(bash)）...';
+            const placeholders = {
+                baidu: '粘贴 resourceList 请求的 curl 命令（复制为 cURL(bash)）...',
+                opencode: '粘贴 workspace .../go 页面的 curl 命令（复制为 cURL，bash/cmd 均可）...',
+            };
+            textarea.placeholder = placeholders[providerType] || '粘贴 curl 命令...';
 
-            // Baidu: show placeholder for existing config
-            if (existingConfig && providerType === 'baidu') {
-                const hasConfig = existingConfig.extra?.cookie || existingConfig.extra?.csrftoken;
+            // Existing config: show "already configured" hint instead of the raw curl
+            if (existingConfig) {
+                const hasConfig = providerType === 'opencode'
+                    ? (existingConfig.extra?.cookie || existingConfig.extra?.auth)
+                    : (existingConfig.extra?.cookie || existingConfig.extra?.csrftoken);
                 if (hasConfig) {
                     textarea.placeholder = '已有配置。如需更新，粘贴新的 curl 命令覆盖即可。';
                 }
@@ -363,20 +394,12 @@ async function buildFields(providerType, existingConfig) {
 
             div.appendChild(textarea);
 
-            // Baidu: add help text
-            if (providerType === 'baidu') {
+            // Help link with provider-specific tutorial
+            if (providerType === 'baidu' || providerType === 'opencode') {
                 const help = document.createElement('span');
                 help.className = 'help-link';
                 help.textContent = '如何获取 curl 命令？';
-                help.onclick = () => alert(
-                    '获取 curl 命令步骤:\n\n' +
-                    '1. 登录 百度千帆资源订阅页面\n' +
-                    '2. 按 F12 打开浏览器开发者工具，切换到 网络 (Network) 标签页\n' +
-                    '3. 在网络请求列表中找到名为 resourceList 的请求\n' +
-                    '4. 右键点击该请求 → 复制 → 复制为 cURL(bash)\n' +
-                    '   （注意：选"复制为 cURL(bash)"，不要选"全部复制"）\n' +
-                    '5. 将复制的内容粘贴到上方的文本框中，点击保存即可'
-                );
+                help.onclick = () => alert(curlTutorial(providerType));
                 div.appendChild(help);
             }
         } else {
