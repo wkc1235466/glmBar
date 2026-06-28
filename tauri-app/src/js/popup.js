@@ -7,6 +7,7 @@ let compact = false;
 let lastRightClickTime = 0;
 let lastRightClickX = 0;
 let lastRightClickY = 0;
+let pendingUsage = null;  // 缓存后台数据，窗口可见时再渲染
 
 // Safe access to Tauri APIs
 function tauriInvoke(cmd, args) {
@@ -36,9 +37,27 @@ async function init() {
 
     // Register event listeners BEFORE initial fetch to avoid missing events
     tauriListen('usage-updated', function(event) {
-        renderUsage(event.payload);
+        // 窗口不可见时只缓存数据，不渲染 DOM。
+        // 对隐藏的 WebView2 更新 DOM 会触发渲染，在 Windows 上
+        // 导致临时窗口闪现（任务栏上两个空白窗口反复开关）。
+        var win = window.__TAURI__.window.getCurrentWindow();
+        win.isVisible().then(function(visible) {
+            if (visible) {
+                renderUsage(event.payload);
+            } else {
+                pendingUsage = event.payload;
+            }
+        }).catch(function() {
+            renderUsage(event.payload);
+        });
     });
     tauriListen('trigger-refresh', async function() {
+        // trigger-refresh 在 popup 显示时触发（main.rs toggle_popup_window），
+        // 此时窗口已可见。如果有缓存的后台数据先渲染，再拉取最新。
+        if (pendingUsage) {
+            renderUsage(pendingUsage);
+            pendingUsage = null;
+        }
         await refreshUsage();
     });
 

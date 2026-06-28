@@ -8,24 +8,38 @@
  */
 export function resizeToFit(elementId, options) {
     var opts = options || {};
-    requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
+    var win = window.__TAURI__.window.getCurrentWindow();
+
+    // 关键：窗口不可见时不要 setSize/setPosition。
+    // 后台刷新（usage-updated）每分钟触发一次，若对隐藏的 webview 窗口
+    // 调整尺寸，会在 Windows 上触发 webview 渲染窗口的 创建→显示→隐藏，
+    // 表现为空白窗口反复闪动。隐藏时直接跳过。
+    win.isVisible().then(function (visible) {
+        if (!visible) return;
+        performResize(elementId, win, opts);
+    }).catch(function () {
+        performResize(elementId, win, opts);
+    });
+}
+
+function performResize(elementId, win, opts) {
+    requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
             var appEl = document.getElementById(elementId);
             if (!appEl) return;
             var rect = appEl.getBoundingClientRect();
             var width = Math.max(Math.ceil(rect.width), 100);
             var height = Math.max(Math.ceil(rect.height), 60);
 
-            var win = window.__TAURI__.window.getCurrentWindow();
             var mod = window.__TAURI__.dpi || window.__TAURI__.window;
 
             var sizeObj = mod.LogicalSize
                 ? new mod.LogicalSize(width, height)
                 : { type: 'Logical', width: width, height: height };
 
-            win.setSize(sizeObj).then(function() {
+            win.setSize(sizeObj).then(function () {
                 return win.primaryMonitor();
-            }).then(function(monitor) {
+            }).then(function (monitor) {
                 if (monitor) {
                     var sW = monitor.size.width / monitor.scaleFactor;
                     var sH = monitor.size.height / monitor.scaleFactor;
@@ -42,7 +56,7 @@ export function resizeToFit(elementId, options) {
                         : { type: 'Logical', x: Math.max(x, 0), y: Math.max(y, 0) };
                     return win.setPosition(posObj);
                 }
-            }).catch(function(e) {
+            }).catch(function (e) {
                 console.error('resize failed:', e);
             });
         });

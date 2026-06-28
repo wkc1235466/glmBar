@@ -2,7 +2,7 @@
 @import "theme.css";
 
 body {
-    background: transparent;
+    background: var(--bg-primary);
 }
 
 #app {
