@@ -243,43 +243,32 @@ fn detect_proxy() -> Option<String> {
 }
 
 /// Read the Windows registry system proxy (Internet Settings).
+/// Uses `winreg` for direct registry access — no subprocess, no console window flash.
 /// Returns `http://host:port` when a system proxy is enabled, else None.
 #[cfg(windows)]
 fn read_windows_system_proxy() -> Option<String> {
-    use std::process::Command;
-    const KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings";
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
 
-    // ProxyEnable == 0x1 ?
-    let enable = Command::new("reg")
-        .args(["query", KEY, "/v", "ProxyEnable"])
-        .output()
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let key = hkcu
+        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Internet Settings")
         .ok()?;
-    let enable_on = String::from_utf8_lossy(&enable.stdout)
-        .lines()
-        .any(|l| l.contains("ProxyEnable") && l.contains("0x1"));
-    if !enable_on {
+
+    // ProxyEnable == 1 ?
+    let enabled: u32 = key.get_value("ProxyEnable").unwrap_or(0);
+    if enabled != 1 {
         return None;
     }
 
-    // ProxyServer, e.g. "    ProxyServer    REG_SZ    127.0.0.1:7897"
-    let server_out = Command::new("reg")
-        .args(["query", KEY, "/v", "ProxyServer"])
-        .output()
-        .ok()?;
-    let server_text = String::from_utf8_lossy(&server_out.stdout);
-    let server = server_text
-        .lines()
-        .find(|l| l.contains("ProxyServer") && l.contains("REG_SZ"))?
-        .split_whitespace()
-        .last()?
-        .trim();
+    let server: String = key.get_value("ProxyServer").ok()?;
     if server.is_empty() {
         return None;
     }
 
     // Registry value usually lacks a scheme; reqwest needs one.
     if server.contains("://") {
-        Some(server.to_string())
+        Some(server)
     } else {
         Some(format!("http://{}", server))
     }
