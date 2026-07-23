@@ -235,11 +235,6 @@ function renderCompactRow(u) {
 
 // ─── Resize window to fit content ───
 function doResize() {
-    // Clamp height to max 800px for popup
-    var rect = app.getBoundingClientRect();
-    if (rect.height > 800) {
-        app.style.maxHeight = '800px';
-    }
     resizeToFit('app');
 }
 

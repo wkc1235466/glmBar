@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QProgressBar,
+    QScrollArea,
     QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
@@ -300,7 +301,19 @@ class UsagePopup(QWidget):
         self._expanded_layout = QVBoxLayout(self._expanded_page)
         self._expanded_layout.setContentsMargins(0, 0, 0, 0)
         self._expanded_layout.setSpacing(8)
-        self._layout.addWidget(self._expanded_page)
+
+        # Scroll area for expanded page — keeps footer visible when many providers
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setWidget(self._expanded_page)
+        self._scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }"
+            "QScrollBar:vertical { width: 6px; }"
+            "QScrollBar::handle:vertical { background: #555; border-radius: 3px; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+        )
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._layout.addWidget(self._scroll)
 
         self._compact_page = QWidget()
         self._compact_page.setStyleSheet("background: transparent;")
@@ -578,11 +591,15 @@ class UsagePopup(QWidget):
 
         if self._compact:
             # Compact mode: shrink to fit content
+            self._scroll.setMaximumHeight(16777215)  # unlimited
             self._container.adjustSize()
             size = self._container.size()
             self.setFixedSize(size.width() + 2, size.height() + 2)
         else:
-            # Expanded mode: fixed width, auto height
+            # Expanded mode: fixed width, auto height with max
+            screen = QApplication.primaryScreen().geometry()
+            max_h = min(800, screen.height() - 80)
+            self._scroll.setMaximumHeight(max_h)
             self.setFixedWidth(420)
             self.adjustSize()
 
