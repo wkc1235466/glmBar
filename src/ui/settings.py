@@ -228,12 +228,12 @@ class ProviderEditDialog(QDialog):
             # curl 认证类：显示已配置状态提示，不回填 curl
             curl_widget = self._fields.get("curl")
             if curl_widget and isinstance(curl_widget, QTextEdit):
-            if cfg.type == "opencode":
-                has_config = cfg.extra.get("cookie") or cfg.extra.get("auth")
-            elif cfg.type == "ollama":
-                has_config = cfg.extra.get("cookie")
-            else:
-                has_config = cfg.extra.get("cookie") or cfg.extra.get("csrftoken")
+                if cfg.type == "opencode":
+                    has_config = cfg.extra.get("cookie") or cfg.extra.get("auth")
+                elif cfg.type == "ollama":
+                    has_config = cfg.extra.get("cookie")
+                else:
+                    has_config = cfg.extra.get("cookie") or cfg.extra.get("csrftoken")
                 if has_config:
                     curl_widget.setPlaceholderText(
                         "已有配置。如需更新，粘贴新的 curl 命令覆盖即可。"
