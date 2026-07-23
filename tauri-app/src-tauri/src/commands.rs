@@ -74,6 +74,7 @@ pub fn get_available_provider_types() -> Result<Vec<(String, String)>, String> {
         ("openrouter".into(), "OpenRouter".into()),
         ("baidu".into(), "百度千帆".into()),
         ("opencode".into(), "OpenCode Go".into()),
+        ("ollama".into(), "Ollama".into()),
         ("custom".into(), "自定义".into()),
     ];
     Ok(types)

@@ -69,7 +69,7 @@ function renderProviderTable() {
         const typeLabels = {
             zai: 'Z.ai 智谱', minimax: 'MiniMax', kimi: 'Kimi 月之暗面',
             alibaba: '阿里云百炼', openrouter: 'OpenRouter',
-            baidu: '百度千帆', opencode: 'OpenCode Go', custom: '自定义',
+            baidu: '百度千帆', opencode: 'OpenCode Go', ollama: 'Ollama', custom: '自定义',
         };
         tdType.textContent = typeLabels[prov.type] || prov.type;
         tdType.style.color = '#888';
@@ -93,7 +93,8 @@ function renderProviderTable() {
             tdKey.textContent = '已设置';
             tdKey.className = 'key-set';
         } else if ((prov.type === 'baidu' && prov.extra && (prov.extra.cookie || prov.extra.csrftoken)) ||
-                   (prov.type === 'opencode' && prov.extra && (prov.extra.cookie || prov.extra.auth))) {
+                   (prov.type === 'opencode' && prov.extra && (prov.extra.cookie || prov.extra.auth)) ||
+                   (prov.type === 'ollama' && prov.extra && prov.extra.cookie)) {
             tdKey.textContent = '已配置';
             tdKey.className = 'key-set';
         } else {
@@ -244,6 +245,7 @@ async function showProviderModal(existingConfig, types) {
             const curlProviders = {
                 baidu: ['cookie', 'csrftoken', 'x-bce-jt'],
                 opencode: ['auth', 'url', 'cookie'],
+                ollama: ['cookie'],
             };
             if (curlProviders[typeId]) {
                 const curlInput = fieldsContainer.querySelector('[data-field="curl"]');
@@ -276,7 +278,7 @@ async function showProviderModal(existingConfig, types) {
             const typeNames = {
                 zai: 'Z.ai (智谱)', minimax: 'MiniMax', kimi: 'Kimi (月之暗面)',
                 alibaba: '阿里云百炼', openrouter: 'OpenRouter', baidu: '百度千帆',
-                opencode: 'OpenCode Go',
+                opencode: 'OpenCode Go', ollama: 'Ollama',
             };
 
             newConfig = {
@@ -324,6 +326,15 @@ function curlTutorial(providerType) {
             '4. 右键该请求 → 复制 → 复制为 cURL（bash 或 cmd 均可）\n' +
             '5. 粘贴到上方文本框，保存即可\n\n' +
             '提示：opencode 的 auth 是会话 Cookie，会定期失效，过期后重新复制即可。';
+    }
+    if (providerType === 'ollama') {
+        return '获取 curl 命令步骤:\n\n' +
+            '1. 登录 https://ollama.com/settings （Usage 页面）\n' +
+            '2. 按 F12 打开开发者工具，切换到 网络 (Network) 标签页\n' +
+            '3. 刷新页面，在请求列表中找到名为 settings 的请求\n' +
+            '4. 右键该请求 → 复制 → 复制为 cURL（bash 或 cmd 均可）\n' +
+            '5. 粘贴到上方文本框，保存即可\n\n' +
+            '提示：Ollama 使用 Cookie 认证，会定期失效，过期后重新复制即可。';
     }
     // baidu (default)
     return '获取 curl 命令步骤:\n\n' +
@@ -379,6 +390,7 @@ async function buildFields(providerType, existingConfig) {
             const placeholders = {
                 baidu: '粘贴 resourceList 请求的 curl 命令（复制为 cURL(bash)）...',
                 opencode: '粘贴 workspace .../go 页面的 curl 命令（复制为 cURL，bash/cmd 均可）...',
+                ollama: '粘贴 ollama.com/settings 页面的 curl 命令（复制为 cURL，bash/cmd 均可）...',
             };
             textarea.placeholder = placeholders[providerType] || '粘贴 curl 命令...';
 
@@ -386,6 +398,8 @@ async function buildFields(providerType, existingConfig) {
             if (existingConfig) {
                 const hasConfig = providerType === 'opencode'
                     ? (existingConfig.extra?.cookie || existingConfig.extra?.auth)
+                    : providerType === 'ollama'
+                    ? !!existingConfig.extra?.cookie
                     : (existingConfig.extra?.cookie || existingConfig.extra?.csrftoken);
                 if (hasConfig) {
                     textarea.placeholder = '已有配置。如需更新，粘贴新的 curl 命令覆盖即可。';
@@ -395,7 +409,7 @@ async function buildFields(providerType, existingConfig) {
             div.appendChild(textarea);
 
             // Help link with provider-specific tutorial
-            if (providerType === 'baidu' || providerType === 'opencode') {
+            if (providerType === 'baidu' || providerType === 'opencode' || providerType === 'ollama') {
                 const help = document.createElement('span');
                 help.className = 'help-link';
                 help.textContent = '如何获取 curl 命令？';

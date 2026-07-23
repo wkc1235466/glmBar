@@ -191,7 +191,7 @@ class ProviderEditDialog(QDialog):
                 self._fields_layout.addWidget(text_edit)
 
                 # curl 认证类：添加教程链接
-                if type_id in ("baidu", "opencode"):
+                if type_id in ("baidu", "opencode", "ollama"):
                     help_btn = QPushButton("如何获取 curl 命令？")
                     help_btn.setObjectName("secondary")
                     help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -224,14 +224,16 @@ class ProviderEditDialog(QDialog):
             self._custom_name.setText(cfg.name)
             self._custom_url.setText(cfg.extra.get("quota_url", ""))
             self._custom_env_key.setText(cfg.extra.get("env_key", ""))
-        elif cfg.type in ("baidu", "opencode"):
+        elif cfg.type in ("baidu", "opencode", "ollama"):
             # curl 认证类：显示已配置状态提示，不回填 curl
             curl_widget = self._fields.get("curl")
             if curl_widget and isinstance(curl_widget, QTextEdit):
-                if cfg.type == "opencode":
-                    has_config = cfg.extra.get("cookie") or cfg.extra.get("auth")
-                else:
-                    has_config = cfg.extra.get("cookie") or cfg.extra.get("csrftoken")
+            if cfg.type == "opencode":
+                has_config = cfg.extra.get("cookie") or cfg.extra.get("auth")
+            elif cfg.type == "ollama":
+                has_config = cfg.extra.get("cookie")
+            else:
+                has_config = cfg.extra.get("cookie") or cfg.extra.get("csrftoken")
                 if has_config:
                     curl_widget.setPlaceholderText(
                         "已有配置。如需更新，粘贴新的 curl 命令覆盖即可。"
@@ -253,8 +255,24 @@ class ProviderEditDialog(QDialog):
                         widget.setText(str(val))
 
     def _show_curl_tutorial(self, type_id: str) -> None:
-        """显示 curl 获取教程对话框（百度千帆 / OpenCode Go）。"""
-        if type_id == "opencode":
+        """显示 curl 获取教程对话框（百度千帆 / OpenCode Go / Ollama）。"""
+        if type_id == "ollama":
+            steps = (
+                "<p><b style='color:#fff;'>1.</b> 登录 "
+                "<a href='https://ollama.com/settings' style='color:#6C63FF;'>ollama.com/settings</a> "
+                "（Usage 页面）</p>"
+                "<p><b style='color:#fff;'>2.</b> 按 <b>F12</b> 打开浏览器开发者工具，"
+                "切换到 <b>网络 (Network)</b> 标签页</p>"
+                "<p><b style='color:#fff;'>3.</b> 刷新页面，在网络请求列表中找到名为 "
+                "<b style='color:#FFD700;'>settings</b> 的请求</p>"
+                "<p><b style='color:#fff;'>4.</b> 右键点击该请求 → <b>复制</b> → "
+                "<b>复制为 cURL</b>（bash 或 cmd 均可）</p>"
+                "<p><b style='color:#fff;'>5.</b> 将复制的内容粘贴到上方的文本框中，"
+                "点击保存即可</p>"
+                "<p style='color:#999;font-size:11px;'>提示：Ollama 使用 Cookie 认证，"
+                "会定期失效，过期后重新复制即可。</p>"
+            )
+        elif type_id == "opencode":
             steps = (
                 "<p><b style='color:#fff;'>1.</b> 登录 "
                 "<a href='https://opencode.ai' style='color:#6C63FF;'>opencode.ai</a> "
@@ -337,6 +355,7 @@ class ProviderEditDialog(QDialog):
             curl_providers = {
                 "baidu": ("cookie", "csrftoken", "x-bce-jt"),
                 "opencode": ("auth", "url", "cookie"),
+                "ollama": ("cookie",),
             }
             if type_id in curl_providers:
                 curl_widget = self._fields.get("curl")
@@ -526,6 +545,8 @@ class SettingsWindow(QDialog):
             elif prov.type == "opencode" and (
                 prov.extra.get("cookie") or prov.extra.get("auth")
             ):
+                masked = "已配置"
+            elif prov.type == "ollama" and prov.extra.get("cookie"):
                 masked = "已配置"
             else:
                 masked = "未设置"
