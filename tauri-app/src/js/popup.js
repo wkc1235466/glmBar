@@ -86,6 +86,7 @@ function shortLabel(label) {
     return label
         .replace('Token 配额', 'Token').replace('Token限额', 'Token')
         .replace('MCP/时间配额', 'MCP').replace('MCP/时间限额', 'MCP')
+        .replace('Session 用量', 'Session')
         .replace('5小时配额', '5小时').replace('5小时限额', '5小时')
         .replace('每周配额', '每周').replace('每周限额', '每周')
         .replace('每月配额', '每月').replace('每月限额', '每月')

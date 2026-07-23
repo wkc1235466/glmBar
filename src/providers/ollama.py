@@ -115,24 +115,12 @@ class OllamaProvider(BaseProvider):
                 )
             )
 
-        # Parse extra usage balance: "Balance remaining" ... "$X"
-        balance = _parse_balance(html)
-
-        if not windows:
-            return UsageData(
-                provider_id=self.provider_id,
-                provider_name=self.name,
-                status=ProviderStatus.ERROR,
-                error_message="无法解析用量数据，页面格式可能已变更",
-            )
-
         return UsageData(
             provider_id=self.provider_id,
             provider_name=self.name,
             status=ProviderStatus.OK,
             plan_name="Ollama Pro",
             windows=windows,
-            balance=balance,
         )
 
     def get_display_config(self) -> dict[str, str]:
@@ -180,12 +168,3 @@ def _parse_reset_time(html: str, section: str) -> datetime | None:
     return None
 
 
-def _parse_balance(html: str) -> float | None:
-    """Parse extra usage balance: 'Balance remaining' ... '$X'."""
-    m = re.search(r"Balance remaining[\s\S]*?\$(\d+(?:\.\d+)?)", html)
-    if m:
-        try:
-            return float(m.group(1))
-        except (ValueError, TypeError):
-            return None
-    return None

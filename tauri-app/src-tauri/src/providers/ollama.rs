@@ -117,15 +117,13 @@ impl Provider for OllamaProvider {
                 );
             }
 
-            let balance = parse_balance(&html);
-
             UsageData {
                 provider_id: "ollama".into(),
                 provider_name: "Ollama".into(),
                 status: ProviderStatus::Ok,
                 plan_name: "Ollama Pro".into(),
                 windows,
-                balance,
+                balance: None,
                 error_message: String::new(),
                 updated_at: UsageData::now_timestamp(),
             }
@@ -156,9 +154,3 @@ fn parse_reset_time(html: &str, section: &str) -> Option<String> {
     Some(cap[1].to_string().replace('Z', "+00:00"))
 }
 
-/// Parse extra usage balance: "Balance remaining" ... "$X"
-fn parse_balance(html: &str) -> Option<f64> {
-    let re = Regex::new(r"Balance remaining[\s\S]*?\$(\d+(?:\.\d+)?)").ok()?;
-    let cap = re.captures(html)?;
-    cap[1].parse().ok()
-}

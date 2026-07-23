@@ -517,6 +517,8 @@ class UsagePopup(QWidget):
                         label = w.label
                         if "Token" in label:
                             label = "Token"
+                        elif "Session" in label or "session" in label.lower():
+                            label = "Session"
                         elif "5小时" in label or "5Hour" in label.lower():
                             label = "5小时"
                         elif "每周" in label or "week" in label.lower():
