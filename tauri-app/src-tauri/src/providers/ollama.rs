@@ -85,7 +85,7 @@ impl Provider for OllamaProvider {
             if let Some(pct) = parse_usage_percent(&html, "Session usage") {
                 let reset = parse_reset_time(&html, "Session usage");
                 windows.push(UsageWindow {
-                    label: "Session 用量".into(),
+                    label: "Session".into(),
                     used_percent: pct,
                     used: pct,
                     total: 100.0,
@@ -99,7 +99,7 @@ impl Provider for OllamaProvider {
             if let Some(pct) = parse_usage_percent(&html, "Weekly usage") {
                 let reset = parse_reset_time(&html, "Weekly usage");
                 windows.push(UsageWindow {
-                    label: "每周用量".into(),
+                    label: "每周".into(),
                     used_percent: pct,
                     used: pct,
                     total: 100.0,

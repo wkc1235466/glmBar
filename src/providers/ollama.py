@@ -89,7 +89,7 @@ class OllamaProvider(BaseProvider):
         if session_pct is not None:
             windows.append(
                 UsageWindow(
-                    label="Session 用量",
+                    label="Session",
                     used_percent=session_pct,
                     used=session_pct,
                     total=100.0,
@@ -105,7 +105,7 @@ class OllamaProvider(BaseProvider):
         if weekly_pct is not None:
             windows.append(
                 UsageWindow(
-                    label="每周用量",
+                    label="每周",
                     used_percent=weekly_pct,
                     used=weekly_pct,
                     total=100.0,
