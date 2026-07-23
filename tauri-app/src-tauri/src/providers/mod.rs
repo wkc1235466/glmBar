@@ -4,6 +4,7 @@ pub mod custom;
 pub mod kimi;
 pub mod minimax;
 pub mod models;
+pub mod ollama;
 pub mod opencode;
 pub mod openrouter;
 pub mod zai;
@@ -38,6 +39,7 @@ pub fn create_provider(config: &ProviderConfig, client: &reqwest::Client) -> Box
         "openrouter" => Box::new(openrouter::OpenRouterProvider::new(client.clone(), &config.api_key)),
         "baidu" => Box::new(baidu::BaiduQianfanProvider::new(client.clone(), &config.extra)),
         "opencode" => Box::new(opencode::OpencodeGoProvider::new(client.clone(), &config.extra)),
+        "ollama" => Box::new(ollama::OllamaProvider::new(client.clone(), &config.extra)),
         _ => Box::new(custom::CustomProvider::new(
             client.clone(),
             &config.id,
@@ -59,6 +61,7 @@ pub fn get_display_config(provider_type: &str) -> Vec<(String, String)> {
         "kimi" | "openrouter" => vec![("api_key".into(), "password".into())],
         "baidu" => vec![("curl".into(), "textarea".into())],
         "opencode" => vec![("curl".into(), "textarea".into())],
+        "ollama" => vec![("curl".into(), "textarea".into())],
         _ => vec![
             ("api_key".into(), "password".into()),
             ("quota_url".into(), "text".into()),

@@ -12,6 +12,7 @@ from .alibaba import AlibabaProvider
 from .openrouter import OpenRouterProvider
 from .baidu import BaiduQianfanProvider
 from .opencode import OpencodeGoProvider
+from .ollama import OllamaProvider
 
 
 class ProviderRegistry:
@@ -29,6 +30,7 @@ class ProviderRegistry:
         self.register_type("openrouter", OpenRouterProvider)
         self.register_type("baidu", BaiduQianfanProvider)
         self.register_type("opencode", OpencodeGoProvider)
+        self.register_type("ollama", OllamaProvider)
 
     def register_type(self, type_id: str, cls: Type[BaseProvider]) -> None:
         """Register a provider class by type ID."""
