@@ -189,6 +189,7 @@ function renderExpandedCard(u) {
     }
 
     if (u.balance != null) h += '<div class="balance">余额: $' + u.balance.toFixed(2) + '</div>';
+    if (u.plan_expires) h += '<div class="balance" style="color:#FFC107;">到期: ' + esc(u.plan_expires) + '</div>';
 
     var t = u.updated_at || '';
     h += '<div class="updated-at">更新: ' + esc(t) + '</div>';

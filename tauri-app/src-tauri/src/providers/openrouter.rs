@@ -122,6 +122,7 @@ impl Provider for OpenRouterProvider {
             plan_name: "OpenRouter".into(),
             windows,
             balance: Some(balance),
+                plan_expires: None,
             error_message: if is_empty {
                 "未找到额度数据".into()
             } else {

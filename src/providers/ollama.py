@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import httpx
 
@@ -15,9 +15,11 @@ class OllamaProvider(BaseProvider):
 
     用户通过在浏览器中复制 curl 命令来配置认证信息。
     用量数据从 https://ollama.com/settings 页面 HTML 中解析。
+    到期日期从 https://ollama.com/settings/billing 页面中解析。
     """
 
     SETTINGS_URL = "https://ollama.com/settings"
+    BILLING_URL = "https://ollama.com/settings/billing"
     USER_AGENT = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
@@ -58,6 +60,7 @@ class OllamaProvider(BaseProvider):
 
         try:
             async with httpx.AsyncClient(timeout=20) as client:
+                # Fetch settings page for usage data
                 resp = await client.get(
                     self.SETTINGS_URL, headers=headers, follow_redirects=True
                 )
@@ -70,6 +73,18 @@ class OllamaProvider(BaseProvider):
                     )
                 resp.raise_for_status()
                 html = resp.text
+
+                # Fetch billing page for expiration date
+                plan_expires = None
+                try:
+                    resp_billing = await client.get(
+                        self.BILLING_URL, headers=headers, follow_redirects=True
+                    )
+                    if resp_billing.status_code not in (401, 403):
+                        resp_billing.raise_for_status()
+                        plan_expires = _parse_expires_date(resp_billing.text)
+                except httpx.HTTPError:
+                    pass  # Non-critical: expiration date is optional
         except httpx.HTTPError as e:
             return UsageData(
                 provider_id=self.provider_id,
@@ -78,9 +93,9 @@ class OllamaProvider(BaseProvider):
                 error_message=str(e),
             )
 
-        return self._parse_html(html)
+        return self._parse_html(html, plan_expires)
 
-    def _parse_html(self, html: str) -> UsageData:
+    def _parse_html(self, html: str, plan_expires: str | None = None) -> UsageData:
         windows: list[UsageWindow] = []
 
         # Parse session usage: "Session usage" ... "X.X% used"
@@ -115,12 +130,21 @@ class OllamaProvider(BaseProvider):
                 )
             )
 
+        if not windows:
+            return UsageData(
+                provider_id=self.provider_id,
+                provider_name=self.name,
+                status=ProviderStatus.ERROR,
+                error_message="无法解析用量数据，页面格式可能已变更",
+            )
+
         return UsageData(
             provider_id=self.provider_id,
             provider_name=self.name,
             status=ProviderStatus.OK,
             plan_name="Ollama Pro",
             windows=windows,
+            plan_expires=plan_expires,
         )
 
     def get_display_config(self) -> dict[str, str]:
@@ -142,7 +166,6 @@ def _parse_usage_percent(html: str, section: str) -> float | None:
       ...
       <span class="text-sm ">X.X% used</span>
     """
-    # Find the section label first, then look for the percentage in following text
     pattern = re.escape(section) + r"[\s\S]*?(\d+(?:\.\d+)?)% used"
     m = re.search(pattern, html)
     if m:
@@ -154,8 +177,6 @@ def _parse_reset_time(html: str, section: str) -> datetime | None:
     """Parse the reset time after a section label.
 
     The HTML structure is:
-      <span>Section usage</span>
-      ...
       <div class="... local-time" data-time="2026-07-23T12:00:00Z">
     """
     pattern = re.escape(section) + r"[\s\S]*?data-time=\"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\""
@@ -168,3 +189,32 @@ def _parse_reset_time(html: str, section: str) -> datetime | None:
     return None
 
 
+# Month name → number mapping for English date parsing
+_MONTH_MAP = {
+    "january": "01", "february": "02", "march": "03", "april": "04",
+    "may": "05", "june": "06", "july": "07", "august": "08",
+    "september": "09", "october": "10", "november": "11", "december": "12",
+}
+
+
+def _parse_expires_date(html: str) -> str | None:
+    """Parse the Pro plan expiration date from the billing page HTML.
+
+    Looks for English date formats like "August 23, 2026" or "Aug 23, 2026"
+    and returns an ISO date string "2026-08-23".
+    """
+    # Pattern: "Month DD, YYYY" or "Mon DD, YYYY"
+    m = re.search(
+        r"(January|February|March|April|May|June|July|August|September|October|November|December"
+        r"|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+        r"\s+(\d{1,2}),?\s+(\d{4})",
+        html,
+        re.IGNORECASE,
+    )
+    if m:
+        month_str = _MONTH_MAP.get(m.group(1).lower())
+        if month_str:
+            day = int(m.group(2))
+            year = m.group(3)
+            return f"{year}-{month_str}-{day:02d}"
+    return None

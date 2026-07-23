@@ -230,6 +230,12 @@ class ProviderCard(QFrame):
             bal.setStyleSheet("color: #4CAF50; font-size: 13px;")
             layout.addWidget(bal)
 
+        # Plan expiration date (e.g. Ollama Pro)
+        if usage.plan_expires:
+            exp = QLabel(f"到期: {usage.plan_expires}")
+            exp.setStyleSheet("color: #FFC107; font-size: 13px;")
+            layout.addWidget(exp)
+
         # Updated time
         time_str = usage.updated_at.strftime("%H:%M:%S")
         updated = QLabel(f"更新时间: {time_str}")

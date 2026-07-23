@@ -151,6 +151,7 @@ impl Provider for KimiProvider {
             plan_name: "Kimi 编程版".into(),
             windows,
             balance: None,
+                plan_expires: None,
             error_message: if is_empty {
                 "未找到编程用量数据".into()
             } else {

@@ -128,6 +128,7 @@ impl Provider for CustomProvider {
             plan_name: String::new(),
             windows,
             balance: None,
+                plan_expires: None,
             error_message: if is_empty {
                 "无法解析响应中的用量数据".into()
             } else {

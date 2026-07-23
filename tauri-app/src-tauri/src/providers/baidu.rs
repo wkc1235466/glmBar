@@ -155,6 +155,7 @@ impl Provider for BaiduQianfanProvider {
             plan_name,
             windows,
             balance: None,
+                plan_expires: None,
             error_message: if is_empty {
                 "无法解析用量数据".into()
             } else {

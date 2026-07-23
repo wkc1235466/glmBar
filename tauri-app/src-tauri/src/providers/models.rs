@@ -37,6 +37,8 @@ pub struct UsageData {
     #[serde(default)]
     pub balance: Option<f64>,
     #[serde(default)]
+    pub plan_expires: Option<String>,
+    #[serde(default)]
     pub error_message: String,
     #[serde(default)]
     pub updated_at: String,
@@ -51,6 +53,7 @@ impl UsageData {
             plan_name: String::new(),
             windows: vec![],
             balance: None,
+            plan_expires: None,
             error_message: String::new(),
             updated_at: chrono::Local::now().format("%H:%M:%S").to_string(),
         }
@@ -64,6 +67,7 @@ impl UsageData {
             plan_name: String::new(),
             windows: vec![],
             balance: None,
+            plan_expires: None,
             error_message: msg.into(),
             updated_at: chrono::Local::now().format("%H:%M:%S").to_string(),
         }
@@ -77,6 +81,7 @@ impl UsageData {
             plan_name: String::new(),
             windows: vec![],
             balance: None,
+            plan_expires: None,
             error_message: msg.into(),
             updated_at: chrono::Local::now().format("%H:%M:%S").to_string(),
         }

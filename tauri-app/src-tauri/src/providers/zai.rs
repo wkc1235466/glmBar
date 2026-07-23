@@ -146,6 +146,7 @@ impl Provider for ZaiProvider {
             plan_name,
             windows,
             balance: None,
+                plan_expires: None,
             error_message: if is_empty {
                 "未找到配额数据".into()
             } else {

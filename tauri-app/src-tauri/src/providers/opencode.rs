@@ -153,6 +153,7 @@ impl Provider for OpencodeGoProvider {
                 plan_name: "OpenCode Go".into(),
                 windows,
                 balance: None,
+                plan_expires: None,
                 error_message: String::new(),
                 updated_at: UsageData::now_timestamp(),
             }

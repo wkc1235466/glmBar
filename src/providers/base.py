@@ -37,6 +37,7 @@ class UsageData:
     plan_name: str = ""
     windows: list[UsageWindow] = field(default_factory=list)
     balance: float | None = None  # for credit-based providers
+    plan_expires: str | None = None  # e.g. "2026-08-23"
     account: str = ""
     error_message: str = ""
     raw_response: dict[str, Any] | None = None
